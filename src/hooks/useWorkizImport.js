@@ -3,7 +3,7 @@ import { fetchWorkizJobs, fetchGhlAttributions } from '../lib/ghlApi'
 import { LEAD_SOURCES } from '../lib/constants'
 
 // Map GHL attribution source values to LEAD_SOURCES dropdown values
-const SOURCE_MAP = {
+const GHL_SOURCE_MAP = {
   'google': 'google',
   'google ads': 'google',
   'google lsa': 'google',
@@ -24,8 +24,7 @@ const SOURCE_MAP = {
 function mapGhlSourceToLeadSource(ghlSource) {
   if (!ghlSource) return ''
   const key = ghlSource.toLowerCase().trim()
-  if (SOURCE_MAP[key]) return SOURCE_MAP[key]
-  // Check if any LEAD_SOURCES value matches directly
+  if (GHL_SOURCE_MAP[key]) return GHL_SOURCE_MAP[key]
   const directMatch = LEAD_SOURCES.find(
     (ls) => ls.value === key || ls.label.toLowerCase() === key
   )
@@ -48,32 +47,39 @@ export function useWorkizImport(addArrayItem) {
     setError(null)
 
     try {
-      // Step 1: Fetch completed jobs from Workiz
+      // Step 1: Fetch jobs from Workiz for this date
       const workizResult = await fetchWorkizJobs(date)
       if (!workizResult?.jobs || workizResult.jobs.length === 0) {
-        setError('No completed Workiz jobs found for this date')
+        setError('No Workiz jobs found for this date')
         setLoading(false)
         return
       }
 
       const jobs = workizResult.jobs
 
-      // Step 2: Collect all customer phones for GHL attribution lookup
-      const phones = jobs
+      // Step 2: For jobs without a lead source from Workiz, try GHL attribution
+      const phonesNeedingAttribution = jobs
+        .filter((j) => !j.leadSource && j.customerPhone)
         .map((j) => j.customerPhone)
-        .filter(Boolean)
 
       let attributions = {}
-      if (phones.length > 0) {
-        const attrResult = await fetchGhlAttributions(phones)
+      if (phonesNeedingAttribution.length > 0) {
+        const attrResult = await fetchGhlAttributions(phonesNeedingAttribution)
         attributions = attrResult?.attributions || {}
       }
 
-      // Step 3: Create job entries from Workiz data + GHL attribution
+      // Step 3: Create job entries
       let importCount = 0
       for (const job of jobs) {
-        const ghlSource = job.customerPhone ? attributions[job.customerPhone] : null
-        const leadSource = mapGhlSourceToLeadSource(ghlSource)
+        // Use Workiz's lead source first, fall back to GHL attribution
+        let leadSource = job.leadSource || ''
+        let sourceNote = job.rawJobSource ? `Source: ${job.rawJobSource} (Workiz)` : ''
+
+        if (!leadSource && job.customerPhone && attributions[job.customerPhone]) {
+          const ghlSource = attributions[job.customerPhone]
+          leadSource = mapGhlSourceToLeadSource(ghlSource)
+          sourceNote = `Source: ${ghlSource} (GHL)`
+        }
 
         const entry = {
           id: crypto.randomUUID(),
@@ -85,7 +91,7 @@ export function useWorkizImport(addArrayItem) {
           scheduled_date: job.scheduledDate || date,
           lead_source: leadSource,
           ghl_pipeline_updated: false,
-          notes: ghlSource ? `Marketing: ${ghlSource} (from GHL)` : 'Imported from Workiz',
+          notes: sourceNote || 'Imported from Workiz',
         }
 
         addArrayItem('jobs_booked', entry)
