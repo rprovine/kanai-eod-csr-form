@@ -47,6 +47,7 @@ export const LEAD_SOURCES = [
   { value: 'instagram', label: 'Instagram' },
   { value: 'web_form', label: 'Web Form' },
   { value: 'referral', label: 'Referral' },
+  { value: 'direct', label: 'Direct' },
   { value: 'dumpsters_com', label: 'Dumpsters.com' },
   { value: 'repeat', label: 'Repeat Customer' },
   { value: 'other', label: 'Other' },

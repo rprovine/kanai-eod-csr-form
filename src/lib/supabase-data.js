@@ -15,6 +15,82 @@ export async function fetchEmployees() {
   return data || []
 }
 
+export async function fetchReports({ startDate, endDate, employeeId } = {}) {
+  if (!isSupabaseConfigured()) return []
+
+  let query = supabase
+    .from(TABLES.eod_reports)
+    .select('id, employee_id, report_date, shift_start, shift_end, submitted_at, status, total_inbound_calls, total_outbound_calls, total_qualified_calls, missed_calls, speed_to_lead, disp_booked, disp_quoted, disp_followup_required, disp_not_qualified, disp_lost, disp_voicemail, docket_clients_created, docket_agreements_sent, workiz_jobs_created, workiz_jobs_completed')
+    .eq('status', 'submitted')
+    .order('report_date', { ascending: false })
+
+  if (startDate) query = query.gte('report_date', startDate)
+  if (endDate) query = query.lte('report_date', endDate)
+  if (employeeId) query = query.eq('employee_id', employeeId)
+
+  const { data, error } = await query
+  if (error) {
+    console.error('Error fetching reports:', error)
+    return []
+  }
+
+  // Attach employee names
+  if (data?.length > 0) {
+    const employeeIds = [...new Set(data.map(r => r.employee_id).filter(Boolean))]
+    if (employeeIds.length > 0) {
+      const { data: employees } = await supabase
+        .from(TABLES.employees)
+        .select('id, name')
+        .in('id', employeeIds)
+      const nameMap = Object.fromEntries((employees || []).map(e => [e.id, e.name]))
+      data.forEach(r => { r.employee_name = nameMap[r.employee_id] || 'Unknown' })
+    }
+  }
+
+  return data || []
+}
+
+export async function fetchReportDetail(reportId) {
+  if (!isSupabaseConfigured()) return null
+
+  const { data: report, error } = await supabase
+    .from(TABLES.eod_reports)
+    .select('*')
+    .eq('id', reportId)
+    .single()
+
+  if (error) {
+    console.error('Error fetching report detail:', error)
+    return null
+  }
+
+  // Fetch child records
+  const [jobsRes, emailsRes, yelpRes, followupsRes] = await Promise.all([
+    supabase.from(TABLES.jobs_booked).select('*').eq('eod_report_id', reportId),
+    supabase.from(TABLES.email_submissions).select('*').eq('eod_report_id', reportId),
+    supabase.from(TABLES.yelp_leads).select('*').eq('eod_report_id', reportId),
+    supabase.from(TABLES.followups).select('*').eq('eod_report_id', reportId),
+  ])
+
+  // Fetch employee name
+  if (report.employee_id) {
+    const { data: emp } = await supabase
+      .from(TABLES.employees)
+      .select('name')
+      .eq('id', report.employee_id)
+      .single()
+    report.employee_name = emp?.name || 'Unknown'
+  }
+
+  return {
+    ...report,
+    jobs_booked: jobsRes.data || [],
+    email_submissions: emailsRes.data || [],
+    yelp_leads: yelpRes.data || [],
+    followups: followupsRes.data || [],
+  }
+}
+
 export async function saveEodReport(formData) {
   if (!isSupabaseConfigured()) {
     console.warn('Supabase not configured — report saved locally only')

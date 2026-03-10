@@ -1,9 +1,29 @@
 import { cn } from '../../lib/utils'
 
-export function Label({ children, htmlFor, className }) {
+export function SourceBadge({ source }) {
+  if (!source) return null
+  if (source === 'system') {
+    return (
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-accent-green/15 text-accent-green border border-accent-green/30 ml-1.5">
+        GHL
+      </span>
+    )
+  }
+  if (source === 'edited') {
+    return (
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30 ml-1.5">
+        Edited
+      </span>
+    )
+  }
+  return null
+}
+
+export function Label({ children, htmlFor, className, source }) {
   return (
-    <label htmlFor={htmlFor} className={cn('block text-sm font-medium text-slate-300 mb-1.5', className)}>
+    <label htmlFor={htmlFor} className={cn('flex items-center text-sm font-medium text-slate-300 mb-1.5', className)}>
       {children}
+      <SourceBadge source={source} />
     </label>
   )
 }
