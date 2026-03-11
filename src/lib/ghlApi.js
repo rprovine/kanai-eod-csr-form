@@ -52,11 +52,12 @@ export async function checkGhlStatus() {
   }
 }
 
-export async function fetchWorkizJobs(date) {
+export async function fetchWorkizJobs(date, teamMember = null) {
   if (!date) return null;
 
   try {
     const params = new URLSearchParams({ date });
+    if (teamMember) params.set('team_member', teamMember);
     const response = await fetch(`/api/workiz/jobs?${params}`);
 
     if (!response.ok) {

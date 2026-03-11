@@ -37,7 +37,7 @@ function mapJobSource(source) {
  * The API returns all active jobs; we filter by scheduled date client-side.
  * Cloudflare requires a User-Agent header.
  */
-export async function getJobsByDate(date) {
+export async function getJobsByDate(date, teamMember = null) {
   const token = process.env.WORKIZ_API_TOKEN;
   if (!token) throw new Error('WORKIZ_API_TOKEN not configured');
 
@@ -74,24 +74,30 @@ export async function getJobsByDate(date) {
       // Filter by scheduled date
       const jobDate = extractDate(job.JobDateTime || job.CreatedDate || '');
 
-      if (jobDate === date) {
-        const customerName = [job.FirstName, job.LastName]
-          .filter(Boolean).join(' ').trim() || job.Company || '';
+      if (jobDate !== date) continue;
 
-        allJobs.push({
-          jobNumber: job.UUID || '',
-          revenue: parseFloat(job.JobTotalPrice || job.SubTotal || 0),
-          customerPhone: job.Phone || '',
-          customerName,
-          address: [job.Address, job.City, job.State].filter(Boolean).join(', '),
-          technician: job.Team?.[0]?.Name || '',
-          jobType: job.JobType || '',
-          scheduledDate: jobDate || date,
-          status: job.Status || '',
-          leadSource: mapJobSource(job.JobSource || job.how_did_you_hear_about_us || ''),
-          rawJobSource: (job.JobSource || '').trim(),
-        });
+      // Filter by team member if specified
+      if (teamMember) {
+        const teamNames = (job.Team || []).map((t) => (t.Name || '').toLowerCase());
+        if (!teamNames.some((name) => name.includes(teamMember.toLowerCase()))) continue;
       }
+
+      const customerName = [job.FirstName, job.LastName]
+        .filter(Boolean).join(' ').trim() || job.Company || '';
+
+      allJobs.push({
+        jobNumber: job.UUID || '',
+        revenue: parseFloat(job.JobTotalPrice || job.SubTotal || 0),
+        customerPhone: job.Phone || '',
+        customerName,
+        address: [job.Address, job.City, job.State].filter(Boolean).join(', '),
+        technician: job.Team?.[0]?.Name || '',
+        jobType: job.JobType || '',
+        scheduledDate: jobDate || date,
+        status: job.Status || '',
+        leadSource: mapJobSource(job.JobSource || job.how_did_you_hear_about_us || ''),
+        rawJobSource: (job.JobSource || '').trim(),
+      });
     }
 
     if (!hasMore) break;

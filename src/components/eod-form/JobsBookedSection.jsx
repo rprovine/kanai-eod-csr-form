@@ -1,9 +1,16 @@
+import { useState } from 'react'
 import { Briefcase, Sparkles, Download, Loader2, AlertCircle } from 'lucide-react'
 import FormCard from '../shared/FormCard'
 import RepeatableEntry from '../shared/RepeatableEntry'
 import { Label, Input, Select, DollarInput, Checkbox } from '../shared/FormField'
 import { JOB_TYPES, LEAD_SOURCES } from '../../lib/constants'
 import { getDefaultJobEntry } from '../../lib/form-defaults'
+
+const TEAM_LEADS = [
+  { value: 'Zakea', label: 'Zakea' },
+  { value: 'Rey', label: 'Rey' },
+  { value: 'Xavier', label: 'Xavier' },
+]
 
 function GhlSuggestions({ pipelineData, existingJobs, onAddSuggestion }) {
   if (!pipelineData?.opportunities?.length) return null
@@ -55,18 +62,30 @@ function GhlSuggestions({ pipelineData, existingJobs, onAddSuggestion }) {
 }
 
 function WorkizImportButton({ workizImport, reportDate }) {
+  const [selectedLead, setSelectedLead] = useState('')
+
   if (!workizImport) return null
 
   const { loading, error, lastImport, importJobs } = workizImport
 
   return (
-    <div className="mb-4">
-      <div className="flex items-center gap-3">
+    <div className="mb-4 bg-slate-800/40 border border-card-border rounded-lg px-4 py-3">
+      <div className="flex items-center gap-3 flex-wrap">
+        <select
+          value={selectedLead}
+          onChange={(e) => setSelectedLead(e.target.value)}
+          className="px-3 py-2 rounded-lg bg-slate-800 border border-card-border text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-kanai-blue"
+        >
+          <option value="">Select Team Lead...</option>
+          {TEAM_LEADS.map((tl) => (
+            <option key={tl.value} value={tl.value}>{tl.label}</option>
+          ))}
+        </select>
         <button
           type="button"
-          onClick={() => importJobs(reportDate)}
-          disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-kanai-blue/20 border border-kanai-blue/40 text-kanai-blue-light text-sm font-medium hover:bg-kanai-blue/30 transition-colors disabled:opacity-50"
+          onClick={() => importJobs(reportDate, selectedLead || null)}
+          disabled={loading || !selectedLead}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-kanai-blue/20 border border-kanai-blue/40 text-kanai-blue-light text-sm font-medium hover:bg-kanai-blue/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? (
             <Loader2 className="w-4 h-4 animate-spin" />
