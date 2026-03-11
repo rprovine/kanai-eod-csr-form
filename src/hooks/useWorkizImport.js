@@ -37,7 +37,7 @@ export function useWorkizImport(addArrayItem) {
   const [error, setError] = useState(null)
   const [lastImport, setLastImport] = useState(null)
 
-  const importJobs = useCallback(async (date, teamMember = null) => {
+  const importJobs = useCallback(async (date) => {
     if (!date) {
       setError('No date selected')
       return
@@ -47,8 +47,8 @@ export function useWorkizImport(addArrayItem) {
     setError(null)
 
     try {
-      // Step 1: Fetch jobs from Workiz for this date (filtered by team lead)
-      const workizResult = await fetchWorkizJobs(date, teamMember)
+      // Step 1: Fetch jobs from Workiz for this date
+      const workizResult = await fetchWorkizJobs(date)
       if (!workizResult?.jobs || workizResult.jobs.length === 0) {
         setError('No Workiz jobs found for this date')
         setLoading(false)

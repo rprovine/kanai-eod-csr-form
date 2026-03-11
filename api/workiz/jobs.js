@@ -10,7 +10,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'GET only' });
   }
 
-  const { date, team_member } = req.query;
+  const { date } = req.query;
   if (!date) {
     return res.status(400).json({ error: 'date parameter is required (YYYY-MM-DD)' });
   }
@@ -25,7 +25,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const jobs = await getJobsByDate(date, team_member || null);
+    const jobs = await getJobsByDate(date);
     return res.status(200).json({
       jobs,
       count: jobs.length,
