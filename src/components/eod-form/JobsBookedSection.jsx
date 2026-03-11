@@ -1,122 +1,17 @@
-import { Briefcase, Sparkles, Download, Loader2, AlertCircle } from 'lucide-react'
+import { Briefcase } from 'lucide-react'
 import FormCard from '../shared/FormCard'
 import RepeatableEntry from '../shared/RepeatableEntry'
 import { Label, Input, Select, DollarInput, Checkbox } from '../shared/FormField'
 import { JOB_TYPES, LEAD_SOURCES } from '../../lib/constants'
 import { getDefaultJobEntry } from '../../lib/form-defaults'
 
-function GhlSuggestions({ pipelineData, existingJobs, onAddSuggestion }) {
-  if (!pipelineData?.opportunities?.length) return null
-
-  // Filter to opportunities that look like bookings and aren't already added
-  const bookedOpps = pipelineData.opportunities.filter((opp) => {
-    const stage = (opp.stage || '').toLowerCase()
-    const isBooked = stage.includes('book') || stage.includes('won') || stage.includes('schedul')
-    if (!isBooked) return false
-    // Check if already in jobs list by name match
-    const alreadyAdded = existingJobs.some((j) =>
-      j.customer_name && opp.name && j.customer_name.toLowerCase() === opp.name.toLowerCase()
-    )
-    return !alreadyAdded
-  })
-
-  if (bookedOpps.length === 0) return null
-
-  return (
-    <div className="mb-4 bg-ghl-purple/10 border border-ghl-purple/30 rounded-lg px-4 py-3">
-      <div className="flex items-center gap-2 mb-2">
-        <Sparkles className="w-4 h-4 text-ghl-purple" />
-        <span className="text-sm font-medium text-ghl-purple">GHL Pipeline Suggestions</span>
-      </div>
-      <p className="text-xs text-slate-400 mb-3">
-        These opportunities were moved to "Booked" in GHL today:
-      </p>
-      <div className="space-y-2">
-        {bookedOpps.slice(0, 5).map((opp, i) => (
-          <div key={i} className="flex items-center justify-between bg-slate-800/50 rounded-lg px-3 py-2">
-            <div>
-              <span className="text-sm text-slate-200">{opp.name || 'Unknown'}</span>
-              {opp.value > 0 && (
-                <span className="text-xs text-slate-400 ml-2">${opp.value.toLocaleString()}</span>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => onAddSuggestion(opp)}
-              className="text-xs px-2.5 py-1 rounded bg-ghl-purple/20 text-ghl-purple hover:bg-ghl-purple/30 transition-colors"
-            >
-              + Add
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function WorkizImportButton({ workizImport, reportDate }) {
-  if (!workizImport) return null
-
-  const { loading, error, lastImport, importJobs } = workizImport
-
-  return (
-    <div className="mb-4">
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => importJobs(reportDate)}
-          disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-kanai-blue/20 border border-kanai-blue/40 text-kanai-blue-light text-sm font-medium hover:bg-kanai-blue/30 transition-colors disabled:opacity-50"
-        >
-          {loading ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Download className="w-4 h-4" />
-          )}
-          {loading ? 'Importing...' : 'Import from Workiz'}
-        </button>
-        {lastImport && (
-          <span className="text-xs text-slate-400">
-            Imported {lastImport.count} job{lastImport.count !== 1 ? 's' : ''}
-          </span>
-        )}
-      </div>
-      {error && (
-        <div className="mt-2 flex items-center gap-2 text-xs text-amber-400">
-          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-          {error}
-        </div>
-      )}
-    </div>
-  )
-}
-
-export default function JobsBookedSection({ formData, addArrayItem, updateArrayItem, removeArrayItem, ghl, workizImport }) {
+export default function JobsBookedSection({ formData, addArrayItem, updateArrayItem, removeArrayItem }) {
   const totalRevenue = formData.jobs_booked.reduce(
     (sum, job) => sum + (parseFloat(job.estimated_revenue) || 0), 0
   )
 
-  const handleAddGhlSuggestion = (opp) => {
-    const entry = {
-      ...getDefaultJobEntry(),
-      customer_name: opp.name || '',
-      estimated_revenue: opp.value || '',
-      ghl_pipeline_updated: true,
-      notes: `From GHL pipeline — ${opp.stage || 'Booked'}`,
-    }
-    addArrayItem('jobs_booked', entry)
-  }
-
   return (
     <FormCard title="Jobs Booked Today" subtitle="Section 5 of 13" icon={Briefcase}>
-      <WorkizImportButton workizImport={workizImport} reportDate={formData.report_date} />
-
-      <GhlSuggestions
-        pipelineData={ghl?.pipelineData}
-        existingJobs={formData.jobs_booked}
-        onAddSuggestion={handleAddGhlSuggestion}
-      />
-
       <RepeatableEntry
         title="Job"
         items={formData.jobs_booked}
