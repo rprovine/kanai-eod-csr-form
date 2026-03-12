@@ -1,6 +1,6 @@
 # Kanai CSR End-of-Day Report Form
 
-Internal tool for Kanai Junk Removal CSRs to submit daily performance reports. Auto-fills call metrics, messaging activity, speed-to-lead, and disposition counts from GoHighLevel (GHL) to minimize manual entry and ensure data accuracy.
+Internal tool for Kanai Junk Removal CSRs to submit daily performance reports. Auto-fills outbound calls, messaging activity, speed-to-lead, and disposition counts from GoHighLevel (GHL) to minimize manual entry and ensure data accuracy.
 
 **Live:** https://kanai-eod-csr-form.vercel.app
 
@@ -18,17 +18,22 @@ Internal tool for Kanai Junk Removal CSRs to submit daily performance reports. A
 
 When a CSR selects their name and report date, the system automatically pulls data from GHL:
 
-| Category | Fields Auto-Filled | GHL API Source |
+| Category | Auto-Filled? | Source |
 |---|---|---|
-| Calls | Inbound, outbound, missed, missed call rate | Messages Export API (types 1, 24) |
-| Messaging | SMS sent/received, Facebook sent/received, Instagram sent/received | Messages Export API (types 2, 11, 18) |
-| Speed to Lead | Average response time in minutes | Calculated from inbound-to-outbound response gaps per conversation |
-| Dispositions | Booked, quoted, follow-up, not qualified, lost | Opportunities API (pipeline stage changes) |
-| Pipeline Context | New leads, stale leads, booked/lost counts | Opportunities API |
+| Outbound calls | Yes | GHL Messages Export API |
+| Inbound calls | **No** -- manual entry (GHL IVR calls lack per-CSR attribution) |
+| Missed calls | **No** -- manual entry (same IVR attribution issue) |
+| Missed call rate | Auto-calculated from manual inbound + missed entries |
+| SMS sent/received | Yes | GHL Messages Export API (type 2) |
+| Facebook sent/received | Yes | GHL Messages Export API (type 11) |
+| Instagram sent/received | Yes | GHL Messages Export API (type 18) |
+| Speed-to-lead | Yes (median, per-channel breakdown) | Calculated from conversation response gaps |
+| Dispositions | Yes (booked, quoted, follow-up, not qualified, lost) | GHL Opportunities API (pipeline stage changes) |
+| Pipeline context | Yes (new leads, stale, booked/lost counts) | GHL Opportunities API |
 
-### How Inbound Calls Work
+### Why Inbound/Missed Calls Are Manual
 
-GHL IVR calls (type 24) don't include `userId`, so individual CSR attribution isn't possible. The system uses the **location-wide inbound total** as the CSR's inbound count.
+GHL IVR calls (type 24) don't include a `userId` field, so there's no way to attribute which CSR answered or missed a specific inbound call. The API only knows location-wide totals. To keep per-CSR metrics accurate, inbound and missed calls are entered manually.
 
 ### How Dispositions Work
 
@@ -50,11 +55,15 @@ Booking Rate = Booked / (Booked + Quoted + Follow-up + Lost)
 
 ### Speed-to-Lead Calculation
 
-1. Groups all messages by conversation ID
-2. Finds conversations where the first message today was inbound (new lead)
+1. Groups all messages by conversation ID (calls, SMS, Facebook, Instagram)
+2. Finds conversations where the first message today was inbound (during shift hours only)
 3. Measures the gap to the first outbound response by the CSR
-4. Averages all gaps (capped at 480 min per conversation)
-5. Maps to an enum bucket: under 5 min, 5-10 min, 10-15 min, over 15 min
+4. Caps at 60 minutes -- longer gaps are likely existing conversations, not fresh leads
+5. Uses **median** (not average) to resist outlier skew
+6. Returns overall median plus **per-channel breakdown** (Calls, SMS, Facebook, Instagram)
+7. Maps to an enum bucket: under 5 min, 5-10 min, 10-15 min, over 15 min
+
+**Shift hours filter:** Defaults to 8:00-16:30 HST. Only inbound messages that arrive during shift hours are counted. The Refresh button passes the CSR's entered shift times for accuracy.
 
 ### Field Source Badges
 
@@ -68,7 +77,7 @@ The EOD report has 13 sections:
 |---|---|---|
 | 1 | Shift Info | CSR name, date, shift start/end times |
 | 2 | Communications | Checklist confirming all channels were covered |
-| 3 | Call & Messaging Metrics | Inbound/outbound calls, SMS/FB/IG counts (auto-filled from GHL) |
+| 3 | Call & Messaging Metrics | Calls (manual) + SMS/FB/IG counts (auto-filled from GHL) |
 | 4 | Dispositions | Call outcome categorization (auto-filled from GHL pipeline) |
 | 5 | Jobs Booked | Individual job entries with customer, type, revenue, source |
 | 6 | Emails & Forms | Web form and email submission tracking |
@@ -85,9 +94,9 @@ The EOD report has 13 sections:
 ### Auto-Calculated KPIs
 
 - **Booking Rate** -- Booked / (Booked + Quoted + Follow-Up + Lost). Non-qualified excluded.
-- **Missed Call Rate** -- Missed / Total Inbound (target: under 10%)
+- **Missed Call Rate** -- Missed / Total Inbound (target: under 10%). Calculated from manual entries.
 - **Disposition Logging Rate** -- Total dispositions / Qualified calls (target: 95%+)
-- **Speed-to-Lead** -- Auto-calculated from GHL conversation response times (target: under 5 min)
+- **Speed-to-Lead** -- Median response time from GHL conversations (target: under 5 min)
 - **Follow-Up Completion** -- Completed / Total follow-ups (target: 100%)
 - **Bonus Eligibility** -- All 5 activity minimums must be met
 
@@ -239,16 +248,17 @@ Environment variables are configured in the Vercel project settings.
 
 Auto-fills form fields from GHL data for a given CSR and date.
 
-**Query params:** `employee_id`, `date` (YYYY-MM-DD)
+**Query params:**
+- `employee_id` (required) -- Supabase employee UUID
+- `date` (required) -- YYYY-MM-DD
+- `shift_start` (optional) -- HH:MM, defaults to 08:00
+- `shift_end` (optional) -- HH:MM, defaults to 16:30
 
 **Response:**
 ```json
 {
   "fields": {
-    "total_inbound_calls": 31,
     "total_outbound_calls": 12,
-    "missed_calls": 1,
-    "missed_call_rate": 3.2,
     "total_sms_sent": 8,
     "total_sms_received": 10,
     "total_fb_messages_sent": 5,
@@ -257,8 +267,8 @@ Auto-fills form fields from GHL data for a given CSR and date.
     "total_ig_messages_received": 3,
     "total_messages_sent": 13,
     "total_messages_received": 26,
-    "speed_to_lead": "5_to_10",
-    "speed_to_lead_minutes": 7.3,
+    "speed_to_lead": "under_5",
+    "speed_to_lead_minutes": 4.9,
     "disp_booked": 3,
     "disp_quoted": 1,
     "disp_followup_required": 2,
@@ -272,17 +282,23 @@ Auto-fills form fields from GHL data for a given CSR and date.
     "total": 24
   },
   "speed_to_lead_detail": {
+    "median_minutes": 4.9,
     "avg_minutes": 7.3,
-    "min_minutes": 2.1,
+    "min_minutes": 0.8,
     "max_minutes": 15.8,
-    "conversations_counted": 4,
-    "bucket": "5_to_10"
+    "conversations_counted": 7,
+    "bucket": "under_5",
+    "by_channel": {
+      "calls": { "median_minutes": 3.2, "avg_minutes": 5.1, "count": 4 },
+      "sms": { "median_minutes": 6.8, "avg_minutes": 8.2, "count": 2 },
+      "facebook": { "median_minutes": 5.7, "avg_minutes": 5.7, "count": 1 }
+    }
   },
   "_sources": {
-    "total_inbound_calls": "ghl_location",
     "total_outbound_calls": "ghl_calls",
     "disp_booked": "ghl_pipeline",
-    "total_sms_sent": "ghl_messages"
+    "total_sms_sent": "ghl_messages",
+    "speed_to_lead_minutes": "ghl_calculated"
   },
   "_counts": {
     "user_calls": 12,
@@ -292,6 +308,8 @@ Auto-fills form fields from GHL data for a given CSR and date.
   }
 }
 ```
+
+**Note:** `total_inbound_calls`, `missed_calls`, and `missed_call_rate` are NOT included in the response. Inbound and missed calls are manual entry due to GHL IVR attribution limitations. Missed call rate is calculated client-side.
 
 ### `GET /api/ghl/pipeline`
 
