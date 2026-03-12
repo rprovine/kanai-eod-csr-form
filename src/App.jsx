@@ -14,6 +14,7 @@ import DocketActivitySection from './components/eod-form/DocketActivitySection'
 import WorkizActivitySection from './components/eod-form/WorkizActivitySection'
 import PipelineCheckSection from './components/eod-form/PipelineCheckSection'
 import NotesSection from './components/eod-form/NotesSection'
+import BonusTrackingSection from './components/eod-form/BonusTrackingSection'
 import KPIDashboardSection from './components/eod-form/KPIDashboardSection'
 import CSRReportsView from './components/reports/CSRReportsView'
 import { useEodForm } from './hooks/useEodForm'
@@ -44,6 +45,22 @@ function ConfirmationModal({ formData, kpis, onConfirm, onCancel, isSubmitting }
               {kpis.bonusEligible ? 'YES' : 'NO'}
             </span>
           </div>
+          {kpis.totalDailyBonus > 0 && (
+            <div className="flex justify-between py-2 border-b border-card-border">
+              <span className="text-slate-400">Est. Daily Bonus</span>
+              <span className="font-bold text-accent-gold">${kpis.totalDailyBonus}</span>
+            </div>
+          )}
+          {kpis.guardrails.cancellationWarning && (
+            <div className="flex justify-between py-2 border-b border-card-border">
+              <span className="text-accent-red text-xs">Cancellation rate &gt;20% — bonus reduced 50%</span>
+            </div>
+          )}
+          {kpis.guardrails.noshowWarning && (
+            <div className="flex justify-between py-2 border-b border-card-border">
+              <span className="text-accent-red text-xs">No-show rate &gt;15% — bonus reduced 25%</span>
+            </div>
+          )}
         </div>
 
         <p className="text-xs text-slate-500 mt-4">
@@ -118,7 +135,7 @@ export default function App() {
 
   // Load employees from Supabase on mount
   useEffect(() => {
-    fetchEmployees().then((data) => {
+    fetchEmployees(true).then((data) => {
       if (data.length > 0) {
         setEmployees([{ id: '', name: 'Select CSR...' }, ...data])
       }
@@ -132,7 +149,13 @@ export default function App() {
     }
   }, [formData.employee_id, formData.report_date, ghl.loadGhlData])
 
-  const kpis = useMemo(() => calcAllKPIs(formData), [formData])
+  // Get selected employee's hire_date for new hire ramp
+  const selectedEmployeeHireDate = useMemo(() => {
+    const emp = employees.find(e => e.id === formData.employee_id)
+    return emp?.hire_date || null
+  }, [employees, formData.employee_id])
+
+  const kpis = useMemo(() => calcAllKPIs(formData, { hireDate: selectedEmployeeHireDate }), [formData, selectedEmployeeHireDate])
 
   const completedSections = useMemo(() => {
     const completed = []
@@ -149,7 +172,9 @@ export default function App() {
     if (formData.workiz_jobs_created > 0 || formData.workiz_jobs_completed > 0 || formData.workiz_tomorrow_verified) completed.push(10)
     if (PIPELINE_CHECKS.every((ch) => formData[ch.key])) completed.push(11)
     if (formData.issues || formData.management_attention || formData.suggestions || formData.carried_over) completed.push(12)
-    completed.push(13)
+    if (formData.upsell_count > 0 || formData.review_assists > 0 || formData.winback_bookings > 0 ||
+        formData.cancellation_count > 0 || formData.noshow_count > 0) completed.push(13)
+    completed.push(14)
     return completed
   }, [formData])
 
@@ -199,7 +224,8 @@ export default function App() {
       case 10: return <WorkizActivitySection {...formProps} />
       case 11: return <PipelineCheckSection {...formProps} ghl={ghl} />
       case 12: return <NotesSection {...formProps} />
-      case 13: return <KPIDashboardSection {...formProps} />
+      case 13: return <BonusTrackingSection {...formProps} />
+      case 14: return <KPIDashboardSection {...formProps} hireDate={selectedEmployeeHireDate} />
       default: return null
     }
   }
@@ -251,7 +277,7 @@ export default function App() {
             Previous
           </button>
 
-          {currentSection === 13 ? (
+          {currentSection === 14 ? (
             <button
               onClick={handleSubmit}
               className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-accent-green text-white font-medium text-sm hover:bg-accent-green/90 transition-colors shadow-lg shadow-accent-green/20"
@@ -261,7 +287,7 @@ export default function App() {
             </button>
           ) : (
             <button
-              onClick={() => setCurrentSection(Math.min(13, currentSection + 1))}
+              onClick={() => setCurrentSection(Math.min(14, currentSection + 1))}
               className="flex items-center gap-1 px-4 py-2.5 rounded-lg bg-kanai-blue text-white font-medium text-sm hover:bg-kanai-blue/90 transition-colors"
             >
               Next

@@ -7,7 +7,7 @@ import { getDefaultFollowupEntry } from '../../lib/form-defaults'
 
 export default function FollowUpsSection({ formData, addArrayItem, updateArrayItem, removeArrayItem }) {
   return (
-    <FormCard title="Estimate Follow-Ups" subtitle="Section 8 of 13" icon={RotateCcw}>
+    <FormCard title="Estimate Follow-Ups" subtitle="Section 8 of 14" icon={RotateCcw}>
       {/* Follow-up schedule reminder */}
       <div className="mb-4 bg-ghl-purple/10 border border-ghl-purple/30 rounded-lg px-4 py-3">
         <div className="flex items-start gap-2">

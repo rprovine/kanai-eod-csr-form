@@ -4,7 +4,7 @@ import { Label, NumberInput, DollarInput, Checkbox, Textarea } from '../shared/F
 
 export default function WorkizActivitySection({ formData, setField }) {
   return (
-    <FormCard title="Workiz Activity" subtitle="Section 10 of 13 — Junk Removal" icon={Wrench}>
+    <FormCard title="Workiz Activity" subtitle="Section 10 of 14 — Junk Removal" icon={Wrench}>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         <div>
           <Label>Jobs Created</Label>

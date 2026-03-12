@@ -7,7 +7,7 @@ import { getDefaultYelpEntry } from '../../lib/form-defaults'
 
 export default function YelpLeadsSection({ formData, addArrayItem, updateArrayItem, removeArrayItem }) {
   return (
-    <FormCard title="Yelp Lead Activity" subtitle="Section 7 of 13" icon={Star}>
+    <FormCard title="Yelp Lead Activity" subtitle="Section 7 of 14" icon={Star}>
       <RepeatableEntry
         title="Yelp Lead"
         items={formData.yelp_leads}

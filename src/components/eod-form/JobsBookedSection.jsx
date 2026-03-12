@@ -11,7 +11,7 @@ export default function JobsBookedSection({ formData, addArrayItem, updateArrayI
   )
 
   return (
-    <FormCard title="Jobs Booked Today" subtitle="Section 5 of 13" icon={Briefcase}>
+    <FormCard title="Jobs Booked Today" subtitle="Section 5 of 14" icon={Briefcase}>
       <RepeatableEntry
         title="Job"
         items={formData.jobs_booked}

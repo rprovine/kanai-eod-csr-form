@@ -1,11 +1,12 @@
 import { supabase, isSupabaseConfigured } from './supabase'
 import { TABLES } from './constants'
 
-export async function fetchEmployees() {
+export async function fetchEmployees(includeHireDate = false) {
   if (!isSupabaseConfigured()) return []
+  const fields = includeHireDate ? 'id, name, email, role, hire_date' : 'id, name, email, role'
   const { data, error } = await supabase
     .from(TABLES.employees)
-    .select('id, name, email, role')
+    .select(fields)
     .eq('is_active', true)
     .order('name')
   if (error) {
@@ -65,6 +66,7 @@ export async function saveEodReport(formData, { ghlSuggestions } = {}) {
   delete reportFields.missed_call_rate
   delete reportFields.total_hours
   delete reportFields.status
+  delete reportFields.speed_to_lead_conversations
 
   // Add GHL suggestion audit data if available
   if (ghlSuggestions) {

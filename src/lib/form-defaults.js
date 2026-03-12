@@ -90,6 +90,13 @@ export function getDefaultFormState() {
     suggestions: '',
     carried_over: '',
 
+    // Section 13: Bonus Tracking
+    upsell_count: 0,
+    review_assists: 0,
+    winback_bookings: 0,
+    cancellation_count: 0,
+    noshow_count: 0,
+
     // Metadata
     status: 'draft',
   }

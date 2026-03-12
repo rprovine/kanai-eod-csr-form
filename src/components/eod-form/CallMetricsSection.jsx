@@ -30,7 +30,7 @@ export default function CallMetricsSection({ formData, setField, ghl }) {
   const channelLabels = { calls: 'Calls', sms: 'SMS', facebook: 'Facebook', instagram: 'Instagram' }
 
   return (
-    <FormCard title="Call & Messaging Activity" subtitle="Section 3 of 13 — From GHL" icon={Phone}>
+    <FormCard title="Call & Messaging Activity" subtitle="Section 3 of 14 — From GHL" icon={Phone}>
       {ghl && (
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">

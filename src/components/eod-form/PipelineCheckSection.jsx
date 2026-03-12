@@ -21,7 +21,7 @@ export default function PipelineCheckSection({ formData, setField, ghl }) {
   return (
     <FormCard
       title="GHL Pipeline Status"
-      subtitle="Section 11 of 13 — End-of-day pipeline hygiene"
+      subtitle="Section 11 of 14 — End-of-day pipeline hygiene"
       icon={GitBranch}
     >
       <div className="space-y-3">

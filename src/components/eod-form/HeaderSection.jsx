@@ -3,7 +3,7 @@ import FormCard from '../shared/FormCard'
 import { Label, Input, Select } from '../shared/FormField'
 export default function HeaderSection({ formData, setField, employees = [] }) {
   return (
-    <FormCard title="Shift Information" subtitle="Section 1 of 13" icon={User}>
+    <FormCard title="Shift Information" subtitle="Section 1 of 14" icon={User}>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="sm:col-span-2">
           <Label htmlFor="employee_id">CSR Name</Label>

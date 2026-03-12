@@ -1,6 +1,6 @@
 # Kanai CSR End-of-Day Report Form
 
-Internal tool for Kanai Junk Removal CSRs to submit daily performance reports. Auto-fills outbound calls, messaging activity, speed-to-lead, and disposition counts from GoHighLevel (GHL) to minimize manual entry and ensure data accuracy.
+Internal tool for Kanai Junk Removal CSRs to submit daily performance reports. Auto-fills outbound calls, messaging activity, speed-to-lead, and disposition counts from GoHighLevel (GHL) to minimize manual entry and ensure data accuracy. Includes full compensation tracking with bonus accelerators, quality guardrails, and pay period summary.
 
 **Live:** https://kanai-eod-csr-form.vercel.app
 
@@ -71,7 +71,7 @@ Each auto-filled field shows a source badge in the UI (`GHL`, `GHL Pipeline`, et
 
 ## Form Sections
 
-The EOD report has 13 sections:
+The EOD report has 14 sections:
 
 | # | Section | Description |
 |---|---|---|
@@ -87,7 +87,8 @@ The EOD report has 13 sections:
 | 10 | Workiz Activity | Junk removal system activity |
 | 11 | GHL Pipeline Check | Checklist with contextual counts from GHL pipeline data |
 | 12 | Notes | Issues, management attention items, suggestions, carryover |
-| 13 | KPI Dashboard | Auto-calculated performance metrics and bonus eligibility |
+| 13 | Bonus Tracking | Accelerators (upsells, reviews, win-backs) and guardrails (cancellations, no-shows) |
+| 14 | KPI Dashboard | Auto-calculated performance metrics, full bonus calculation |
 
 ## KPI & Bonus System
 
@@ -113,6 +114,67 @@ The EOD report has 13 sections:
 - Speed-to-lead < 5 minutes
 - Follow-up completion = 100%
 - Missed call rate < 10%
+
+### Bonus Accelerators
+
+CSRs can earn additional bonuses tracked daily in the Bonus Tracking section:
+
+| Accelerator | Bonus | Description |
+|---|---|---|
+| Upsell Champion | $5 per upsell | Added services to an existing job (e.g., mattress pickup added to junk removal) |
+| 5-Star Review Assist | $10 per review | CSR sent the review request that resulted in a 5-star review |
+| Win-Back Booking | $10 per booking | Successfully re-booked a previously lost lead |
+
+### Quality Guardrails
+
+Guardrails protect bonus integrity by penalizing high cancellation/no-show rates:
+
+| Guardrail | Threshold | Penalty |
+|---|---|---|
+| Cancellation Rate | >20% of bookings | Bonus reduced 50% |
+| No-Show Rate | >15% of bookings | Bonus reduced 25% |
+
+Both guardrails can apply simultaneously (e.g., 50% x 75% = 37.5% of original bonus).
+
+### Revenue Milestones (per pay period)
+
+| Milestone | Revenue Threshold | Bonus |
+|---|---|---|
+| Standard | $50,000 | $150 |
+| Premium | $75,000 | $300 |
+
+### New Hire Ramp Period (30 days)
+
+New CSRs get adjusted targets for their first 30 days:
+
+| Period | Duration | Adjustment |
+|---|---|---|
+| Weeks 1-2 | Days 1-14 | Guaranteed $100 bonus regardless of metrics |
+| Weeks 3-4 | Days 15-30 | 40% booking rate threshold (instead of 50%) |
+
+Ramp status is calculated from the `hire_date` field on the employee record.
+
+### Daily Bonus Estimate
+
+The KPI Dashboard (Section 14) shows a full daily bonus breakdown:
+
+```
+Per-Booking Bonus     = Bookings x Tier Rate
+- Guardrail Deductions (if cancellation/no-show rates exceed thresholds)
++ Accelerator Bonuses  (upsells x $5 + reviews x $10 + win-backs x $10)
+= Total Daily Bonus
+```
+
+### Pay Period Summary
+
+The Reports view includes a Pay Period Summary when viewing pay period date ranges:
+
+- Per-booking bonus total with tier rate
+- Tier bonus (per pay period)
+- Accelerator totals (upsells, reviews, win-backs)
+- Revenue milestone bonus
+- Guardrail deductions
+- Total estimated bonus for the pay period
 
 ## Business Context
 
@@ -145,7 +207,7 @@ kanai-eod-csr-form/
 │   │   │   ├── FormField.jsx     # Input components (Label, NumberInput, etc.)
 │   │   │   ├── ProgressIndicator.jsx  # Section navigation dots
 │   │   │   └── RepeatableEntry.jsx    # Add/remove array item UI
-│   │   ├── eod-form/             # 13 form section components
+│   │   ├── eod-form/             # 14 form section components
 │   │   │   ├── HeaderSection.jsx
 │   │   │   ├── CommunicationsSection.jsx
 │   │   │   ├── CallMetricsSection.jsx
@@ -158,26 +220,28 @@ kanai-eod-csr-form/
 │   │   │   ├── WorkizActivitySection.jsx
 │   │   │   ├── PipelineCheckSection.jsx
 │   │   │   ├── NotesSection.jsx
+│   │   │   ├── BonusTrackingSection.jsx
 │   │   │   └── KPIDashboardSection.jsx
 │   │   └── reports/
-│   │       └── CSRReportsView.jsx  # Historical reports with filters and CSV export
+│   │       └── CSRReportsView.jsx  # Historical reports with filters, pay period summary, CSV export
 │   ├── hooks/
 │   │   ├── useEodForm.js         # Form state management
 │   │   ├── useAutoSave.js        # LocalStorage draft auto-save
 │   │   └── useGhlPrefill.js      # GHL data fetching and field source tracking
 │   └── lib/
 │       ├── constants.js          # Disposition types, form sections, options
-│       ├── form-defaults.js      # Default form state for all 13 sections
-│       ├── kpi-calculations.js   # Booking rate, missed call rate, bonus logic
+│       ├── form-defaults.js      # Default form state for all 14 sections
+│       ├── kpi-calculations.js   # Booking rate, bonus calc, guardrails, accelerators, ramp
 │       ├── supabase.js           # Supabase client (anon key)
 │       ├── supabase-data.js      # DB read/write operations
 │       ├── ghlApi.js             # Client-side GHL API calls
-│       ├── dateHelpers.js        # Date formatting utilities
+│       ├── dateHelpers.js        # Date formatting, pay period calculation
 │       └── utils.js              # Tailwind merge helpers
 └── supabase/
     └── migrations/
         ├── 20260126000000_initial_schema.sql        # Base schema
-        └── 20260312000000_ghl_messaging_metrics.sql # Messaging + STL columns
+        ├── 20260312000000_ghl_messaging_metrics.sql # Messaging + STL columns
+        └── 20260313000000_bonus_tracking.sql        # Accelerators, guardrails, hire_date
 ```
 
 ## Database Schema
@@ -188,14 +252,24 @@ Uses the shared Kanai Supabase instance with `csr_` prefixed tables to avoid con
 
 | Table | Description |
 |---|---|
-| `csr_employees` | CSR roster with name, email, role, active status |
-| `csr_eod_reports` | One row per CSR per day with all metrics and checklist data |
+| `csr_employees` | CSR roster with name, email, role, active status, hire_date |
+| `csr_eod_reports` | One row per CSR per day with all metrics, bonus tracking, and checklist data |
 | `csr_eod_jobs_booked` | Child table for individual job entries |
 | `csr_eod_email_submissions` | Child table for email/form submissions |
 | `csr_eod_yelp_leads` | Child table for Yelp lead entries |
 | `csr_eod_followups` | Child table for follow-up attempt entries |
 | `csr_pay_period_summaries` | Aggregated pay period data |
 | `ghl_user_mapping` | Maps `employee_id` to `ghl_user_id` for API lookups |
+
+### Bonus Tracking Columns (on `csr_eod_reports`)
+
+| Column | Type | Description |
+|---|---|---|
+| `upsell_count` | INT | Number of upsells logged |
+| `review_assists` | INT | Number of 5-star review requests sent |
+| `winback_bookings` | INT | Bookings from previously lost leads |
+| `cancellation_count` | INT | Jobs cancelled today |
+| `noshow_count` | INT | Customer no-shows today |
 
 ### Key Constraints
 

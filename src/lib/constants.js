@@ -91,6 +91,8 @@ export const FOLLOWUP_CHANNELS = [
   { value: 'ghl_sms', label: 'GHL SMS' },
   { value: 'ghl_call', label: 'GHL Call' },
   { value: 'ghl_email', label: 'GHL Email' },
+  { value: 'facebook', label: 'Facebook' },
+  { value: 'instagram', label: 'Instagram' },
 ]
 
 export const FOLLOWUP_RESULTS = [
@@ -134,5 +136,6 @@ export const FORM_SECTIONS = [
   { id: 10, title: 'Workiz Activity', shortTitle: 'Workiz' },
   { id: 11, title: 'GHL Pipeline', shortTitle: 'GHL' },
   { id: 12, title: 'Notes', shortTitle: 'Notes' },
-  { id: 13, title: 'KPI Dashboard', shortTitle: 'KPIs' },
+  { id: 13, title: 'Bonus Tracking', shortTitle: 'Bonus' },
+  { id: 14, title: 'KPI Dashboard', shortTitle: 'KPIs' },
 ]

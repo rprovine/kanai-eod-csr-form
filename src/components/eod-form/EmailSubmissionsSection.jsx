@@ -7,7 +7,7 @@ import { getDefaultEmailEntry } from '../../lib/form-defaults'
 
 export default function EmailSubmissionsSection({ formData, addArrayItem, updateArrayItem, removeArrayItem }) {
   return (
-    <FormCard title="Emails & Web Form Submissions" subtitle="Section 6 of 13" icon={Mail}>
+    <FormCard title="Emails & Web Form Submissions" subtitle="Section 6 of 14" icon={Mail}>
       <RepeatableEntry
         title="Entry"
         items={formData.email_submissions}

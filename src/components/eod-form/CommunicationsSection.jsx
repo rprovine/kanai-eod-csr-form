@@ -10,7 +10,7 @@ export default function CommunicationsSection({ formData, setField }) {
   return (
     <FormCard
       title="Customer Communications"
-      subtitle="Section 2 of 13 — Confirm all channels checked"
+      subtitle="Section 2 of 14 — Confirm all channels checked"
       icon={MessageSquare}
     >
       <div className="space-y-3">

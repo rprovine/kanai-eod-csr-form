@@ -4,7 +4,7 @@ import { Label, NumberInput, Checkbox, Textarea } from '../shared/FormField'
 
 export default function DocketActivitySection({ formData, setField }) {
   return (
-    <FormCard title="Docket Activity" subtitle="Section 9 of 13 — Dumpster Rentals" icon={Container}>
+    <FormCard title="Docket Activity" subtitle="Section 9 of 14 — Dumpster Rentals" icon={Container}>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         <div>
           <Label>New Clients Created</Label>

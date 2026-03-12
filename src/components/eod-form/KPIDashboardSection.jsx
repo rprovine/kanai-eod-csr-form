@@ -1,4 +1,4 @@
-import { BarChart3, CheckCircle2, XCircle, AlertTriangle, Trophy, Target } from 'lucide-react'
+import { BarChart3, CheckCircle2, XCircle, AlertTriangle, Trophy, Target, DollarSign } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import FormCard from '../shared/FormCard'
 import { calcAllKPIs, getKPIStatus } from '../../lib/kpi-calculations'
@@ -10,21 +10,8 @@ function StatusIcon({ status }) {
   return <XCircle className="w-5 h-5 text-accent-red" />
 }
 
-function StatusBadge({ status, children }) {
-  const colors = {
-    green: 'bg-accent-green/10 text-accent-green border-accent-green/30',
-    yellow: 'bg-accent-gold/10 text-accent-gold border-accent-gold/30',
-    red: 'bg-accent-red/10 text-accent-red border-accent-red/30',
-  }
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${colors[status]}`}>
-      {children}
-    </span>
-  )
-}
-
-export default function KPIDashboardSection({ formData }) {
-  const kpis = calcAllKPIs(formData)
+export default function KPIDashboardSection({ formData, hireDate }) {
+  const kpis = calcAllKPIs(formData, { hireDate })
 
   // Speed-to-lead: prefer numeric GHL value, fall back to dropdown label
   let stlDisplay, stlStatus
@@ -40,51 +27,57 @@ export default function KPIDashboardSection({ formData }) {
   const kpiRows = [
     {
       label: 'Booking Rate',
-      value: kpis.bookingRate,
       display: `${kpis.bookingRate}%`,
       target: '60%+ (Standard) / 70%+ (Elite)',
       status: getKPIStatus(kpis.bookingRate, 60, 'gte'),
     },
     {
       label: 'Missed Call Rate',
-      value: kpis.missedCallRate,
       display: `${kpis.missedCallRate}%`,
       target: 'Under 10%',
       status: getKPIStatus(kpis.missedCallRate, 10, 'lte'),
     },
     {
       label: 'Speed-to-Lead',
-      value: kpis.speedToLeadMinutes != null && kpis.speedToLeadMinutes > 0 ? kpis.speedToLeadMinutes : (kpis.speedToLead === 'under_5' ? 100 : 0),
       display: stlDisplay,
       target: 'Under 5 min',
       status: stlStatus,
     },
     {
       label: 'Follow-Ups Completed',
-      value: kpis.followupCompletion,
       display: `${kpis.followupCompletion}%`,
       target: '100% of scheduled',
       status: getKPIStatus(kpis.followupCompletion, 100, 'gte'),
     },
     {
       label: 'GHL Pipeline Clean',
-      value: kpis.pipelineClean ? 100 : 0,
       display: kpis.pipelineClean ? 'Yes' : 'No',
       target: 'Yes',
       status: kpis.pipelineClean ? 'green' : 'red',
     },
   ]
 
-  // Chart data for the visual
   const chartData = [
-    { name: 'Book %', value: Math.min(kpis.bookingRate, 100), target: 60, fill: getKPIStatus(kpis.bookingRate, 60, 'gte') },
-    { name: 'F/U %', value: Math.min(kpis.followupCompletion, 100), target: 100, fill: getKPIStatus(kpis.followupCompletion, 100, 'gte') },
+    { name: 'Book %', value: Math.min(kpis.bookingRate, 100), fill: getKPIStatus(kpis.bookingRate, 60, 'gte') },
+    { name: 'F/U %', value: Math.min(kpis.followupCompletion, 100), fill: getKPIStatus(kpis.followupCompletion, 100, 'gte') },
   ]
 
   const chartColors = { green: '#27AE60', yellow: '#F39C12', red: '#E74C3C' }
 
   return (
-    <FormCard title="Daily KPI Summary" subtitle="Section 13 of 13 — Auto-calculated" icon={Target}>
+    <FormCard title="Daily KPI Summary" subtitle="Section 14 of 14 — Auto-calculated" icon={Target}>
+      {/* New Hire Ramp Banner */}
+      {kpis.ramp.isNewHire && (
+        <div className="mb-4 p-3 rounded-xl bg-kanai-blue/10 border border-kanai-blue/30 text-center">
+          <span className="text-sm text-kanai-blue-light font-medium">
+            New Hire Ramp — Week {kpis.ramp.rampWeek}
+            {kpis.ramp.guaranteedBonus > 0
+              ? ` (Guaranteed $${kpis.ramp.guaranteedBonus} bonus)`
+              : ' (40% booking rate threshold)'}
+          </span>
+        </div>
+      )}
+
       {/* Bonus Eligibility Banner */}
       <div className={`mb-6 p-4 rounded-xl border-2 text-center ${
         kpis.bonusEligible
@@ -160,6 +153,28 @@ export default function KPIDashboardSection({ formData }) {
         </div>
       </div>
 
+      {/* Guardrail Warnings */}
+      {(kpis.guardrails.cancellationWarning || kpis.guardrails.noshowWarning) && (
+        <div className="mt-6 bg-accent-red/10 border border-accent-red/30 rounded-lg p-4">
+          <h4 className="text-sm font-semibold text-accent-red mb-2 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4" />
+            Quality Guardrail Warnings
+          </h4>
+          <div className="space-y-1 text-sm">
+            {kpis.guardrails.cancellationWarning && (
+              <p className="text-accent-red">
+                Cancellation rate: {kpis.guardrails.cancellationRate}% (over 20% — bonus reduced 50%)
+              </p>
+            )}
+            {kpis.guardrails.noshowWarning && (
+              <p className="text-accent-red">
+                No-show rate: {kpis.guardrails.noshowRate}% (over 15% — bonus reduced 25%)
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Performance Chart */}
       <div className="mt-6">
         <h4 className="text-sm font-semibold text-slate-300 mb-3">Performance Overview</h4>
@@ -187,28 +202,68 @@ export default function KPIDashboardSection({ formData }) {
         </div>
       </div>
 
-      {/* Compensation Preview */}
-      {kpis.bonusEligible && kpis.performanceTier.perBooking > 0 && (
-        <div className="mt-6 bg-accent-gold/10 border border-accent-gold/30 rounded-lg p-4">
-          <h4 className="text-sm font-semibold text-accent-gold mb-2 flex items-center gap-2">
-            <Trophy className="w-4 h-4" />
-            Today's Estimated Bonus
-          </h4>
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <p className="text-slate-400">Bookings</p>
-              <p className="text-slate-100 font-semibold">{kpis.totalBookings} x ${kpis.performanceTier.perBooking}</p>
-            </div>
-            <div>
-              <p className="text-slate-400">Per-Booking Bonus</p>
-              <p className="text-accent-gold font-semibold">${kpis.totalBookings * kpis.performanceTier.perBooking}</p>
-            </div>
+      {/* Full Compensation Preview */}
+      <div className="mt-6 bg-accent-gold/10 border border-accent-gold/30 rounded-lg p-4">
+        <h4 className="text-sm font-semibold text-accent-gold mb-3 flex items-center gap-2">
+          <DollarSign className="w-4 h-4" />
+          Today's Estimated Bonus
+        </h4>
+        <div className="space-y-2 text-sm">
+          {/* Per-booking bonus */}
+          <div className="flex justify-between">
+            <span className="text-slate-400">
+              Per-Booking ({kpis.totalBookings} x ${kpis.performanceTier.perBooking})
+            </span>
+            <span className="text-slate-100 font-medium">
+              ${kpis.perBookingBonus}
+              {kpis.guardrails.bonusMultiplier < 1 && (
+                <span className="text-accent-red text-xs ml-1">
+                  → ${kpis.adjustedPerBookingBonus} after guardrails
+                </span>
+              )}
+            </span>
           </div>
-          <p className="text-xs text-slate-500 mt-2">
-            Tier bonus of ${kpis.performanceTier.tierBonus} calculated per pay period, not daily.
-          </p>
+
+          {/* Guaranteed bonus (new hire) */}
+          {kpis.guaranteedBonus > 0 && (
+            <div className="flex justify-between">
+              <span className="text-slate-400">New Hire Guaranteed</span>
+              <span className="text-kanai-blue-light font-medium">${kpis.guaranteedBonus}</span>
+            </div>
+          )}
+
+          {/* Accelerators */}
+          {kpis.accelerators.upsells > 0 && (
+            <div className="flex justify-between">
+              <span className="text-slate-400">Upsells ({kpis.accelerators.upsells} x $5)</span>
+              <span className="text-slate-100 font-medium">${kpis.accelerators.upsellBonus}</span>
+            </div>
+          )}
+          {kpis.accelerators.reviews > 0 && (
+            <div className="flex justify-between">
+              <span className="text-slate-400">Review Assists ({kpis.accelerators.reviews} x $10)</span>
+              <span className="text-slate-100 font-medium">${kpis.accelerators.reviewBonus}</span>
+            </div>
+          )}
+          {kpis.accelerators.winbacks > 0 && (
+            <div className="flex justify-between">
+              <span className="text-slate-400">Win-Backs ({kpis.accelerators.winbacks} x $10)</span>
+              <span className="text-slate-100 font-medium">${kpis.accelerators.winbackBonus}</span>
+            </div>
+          )}
+
+          {/* Total */}
+          <div className="flex justify-between pt-2 border-t border-accent-gold/30">
+            <span className="text-accent-gold font-semibold">Total Daily Bonus</span>
+            <span className="text-accent-gold font-bold text-lg">${kpis.totalDailyBonus}</span>
+          </div>
         </div>
-      )}
+
+        <p className="text-xs text-slate-500 mt-2">
+          Tier bonus of ${kpis.performanceTier.tierBonus} calculated per pay period, not daily.
+          {kpis.guardrails.bonusMultiplier < 1 && ' Guardrail deductions applied.'}
+        </p>
+      </div>
     </FormCard>
   )
 }

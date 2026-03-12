@@ -12,7 +12,7 @@ export default function DispositionsSection({ formData, setField, ghl }) {
   const tier = getPerformanceTier(formData.daily_booking_rate)
 
   return (
-    <FormCard title="Call Dispositions" subtitle="Section 4 of 13 — From GHL Pipeline" icon={BarChart3}>
+    <FormCard title="Call Dispositions" subtitle="Section 4 of 14 — From GHL Pipeline" icon={BarChart3}>
       <div className="space-y-4">
         {DISPOSITION_TYPES.map((disp) => (
           <div key={disp.key} className="flex items-center gap-4">

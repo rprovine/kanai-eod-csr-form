@@ -4,7 +4,7 @@ import { Label, Textarea } from '../shared/FormField'
 
 export default function NotesSection({ formData, setField }) {
   return (
-    <FormCard title="Issues, Escalations & Notes" subtitle="Section 12 of 13" icon={FileText}>
+    <FormCard title="Issues, Escalations & Notes" subtitle="Section 12 of 14" icon={FileText}>
       <div className="space-y-4">
         <div>
           <Label>Issues Encountered Today</Label>

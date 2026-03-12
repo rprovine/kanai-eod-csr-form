@@ -48,12 +48,46 @@ export function formatDisplayDate(dateStr) {
   return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
 }
 
+/**
+ * Get the bi-weekly pay period containing a given date.
+ * Kanai uses bi-weekly pay periods starting from a known anchor date.
+ * Anchor: Jan 6, 2026 (Monday) — first pay period of 2026.
+ */
+export function getPayPeriodRange(date = new Date()) {
+  const anchor = new Date(2026, 0, 6) // Jan 6, 2026
+  const target = new Date(date)
+  const diffDays = Math.floor((target - anchor) / (1000 * 60 * 60 * 24))
+  const periodIndex = Math.floor(diffDays / 14)
+  const periodStart = new Date(anchor)
+  periodStart.setDate(anchor.getDate() + (periodIndex * 14))
+  const periodEnd = new Date(periodStart)
+  periodEnd.setDate(periodStart.getDate() + 13)
+
+  return {
+    start: formatDateLocal(periodStart),
+    end: formatDateLocal(periodEnd),
+    label: `${formatDisplayDate(formatDateLocal(periodStart))} – ${formatDisplayDate(formatDateLocal(periodEnd))}`,
+  }
+}
+
+export function getCurrentPayPeriod() {
+  return getPayPeriodRange(new Date())
+}
+
+export function getPreviousPayPeriod() {
+  const current = getPayPeriodRange(new Date())
+  const start = new Date(current.start + 'T00:00:00')
+  start.setDate(start.getDate() - 1) // go to last day of previous period
+  return getPayPeriodRange(start)
+}
+
 export const DATE_PRESETS = [
   { label: 'Today', getValue: () => { const d = getLocalDate(); return { start: d, end: d } } },
   { label: 'Yesterday', getValue: () => { const d = getLocalDate(-1); return { start: d, end: d } } },
   { label: 'This Week', getValue: () => getWeekRange(0) },
   { label: 'Last Week', getValue: () => getWeekRange(-1) },
+  { label: 'Pay Period', getValue: () => { const pp = getCurrentPayPeriod(); return { start: pp.start, end: pp.end } } },
+  { label: 'Last Pay Period', getValue: () => { const pp = getPreviousPayPeriod(); return { start: pp.start, end: pp.end } } },
   { label: 'This Month', getValue: () => getMonthRange(0) },
-  { label: 'Last Month', getValue: () => getMonthRange(-1) },
   { label: 'Custom', getValue: () => null },
 ]

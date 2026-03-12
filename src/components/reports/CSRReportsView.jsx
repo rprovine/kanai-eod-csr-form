@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Calendar, Download, Users, Phone, TrendingUp, Target, CheckCircle2, XCircle, Loader2, Trophy, MessageSquare, Clock } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { Calendar, Download, Users, Phone, TrendingUp, Target, CheckCircle2, XCircle, Loader2, Trophy, MessageSquare, Clock, DollarSign, AlertTriangle } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
 import { TABLES } from '../../lib/constants'
-import { calcBookingRate, calcMissedCallRate, getPerformanceTier } from '../../lib/kpi-calculations'
+import { calcBookingRate, calcMissedCallRate, getPerformanceTier, calcGuardrailDeductions, calcAcceleratorBonus } from '../../lib/kpi-calculations'
 import { fetchEmployees } from '../../lib/supabase-data'
-import { DATE_PRESETS, getWeekRange, formatDisplayDate } from '../../lib/dateHelpers'
+import { DATE_PRESETS, getWeekRange, formatDisplayDate, getCurrentPayPeriod } from '../../lib/dateHelpers'
 
 export default function CSRReportsView() {
   const [dateRange, setDateRange] = useState(() => getWeekRange(0))
@@ -90,6 +90,11 @@ export default function CSRReportsView() {
     const missedCallRate = calcMissedCallRate(r.missed_calls || 0, r.total_inbound_calls || 0)
     const tier = getPerformanceTier(bookingRate)
     const jobCount = jobsBooked.filter(j => j.eod_report_id === r.id).length
+    const accelerators = calcAcceleratorBonus(r)
+    const guardrails = calcGuardrailDeductions(r)
+    const revenue = jobsBooked
+      .filter(j => j.eod_report_id === r.id)
+      .reduce((sum, j) => sum + (parseFloat(j.estimated_revenue) || 0), 0)
 
     return {
       ...r,
@@ -98,6 +103,9 @@ export default function CSRReportsView() {
       missedCallRate: Math.round(missedCallRate * 10) / 10,
       tier,
       jobCount,
+      accelerators,
+      guardrails,
+      revenue,
     }
   })
 
@@ -115,6 +123,13 @@ export default function CSRReportsView() {
     acc.smsReceived += parseInt(r.total_sms_received) || 0
     acc.msgsSent += parseInt(r.total_messages_sent) || 0
     acc.msgsReceived += parseInt(r.total_messages_received) || 0
+    acc.upsells += parseInt(r.upsell_count) || 0
+    acc.reviews += parseInt(r.review_assists) || 0
+    acc.winbacks += parseInt(r.winback_bookings) || 0
+    acc.cancellations += parseInt(r.cancellation_count) || 0
+    acc.noShows += parseInt(r.noshow_count) || 0
+    acc.acceleratorBonus += r.accelerators.totalAccelerator
+    acc.revenue += r.revenue
     if (r.speed_to_lead_minutes != null && r.speed_to_lead_minutes > 0) {
       acc.stlSum += r.speed_to_lead_minutes
       acc.stlCount++
@@ -124,6 +139,8 @@ export default function CSRReportsView() {
     inbound: 0, outbound: 0, missed: 0,
     booked: 0, quoted: 0, followup: 0, lost: 0, jobsBooked: 0,
     smsSent: 0, smsReceived: 0, msgsSent: 0, msgsReceived: 0,
+    upsells: 0, reviews: 0, winbacks: 0, cancellations: 0, noShows: 0,
+    acceleratorBonus: 0, revenue: 0,
     stlSum: 0, stlCount: 0,
   })
 
@@ -137,17 +154,32 @@ export default function CSRReportsView() {
     ? Math.round(totals.stlSum / totals.stlCount * 10) / 10
     : null
 
+  // Pay period bonus calculation
+  const payPeriodTier = getPerformanceTier(avgBookingRate)
+  const payPeriodPerBookingBonus = payPeriodTier.perBooking * totals.booked
+  const payPeriodCancellationRate = totals.booked > 0 ? (totals.cancellations / totals.booked) * 100 : 0
+  const payPeriodNoshowRate = totals.booked > 0 ? (totals.noShows / totals.booked) * 100 : 0
+  let payPeriodMultiplier = 1.0
+  if (payPeriodCancellationRate > 20) payPeriodMultiplier *= 0.5
+  if (payPeriodNoshowRate > 15) payPeriodMultiplier *= 0.75
+  const adjustedPerBookingBonus = Math.round(payPeriodPerBookingBonus * payPeriodMultiplier)
+  const payPeriodTotalBonus = adjustedPerBookingBonus + payPeriodTier.tierBonus + totals.acceleratorBonus
+
+  // Revenue milestone check
+  const revenueMilestoneBonus = totals.revenue >= 75000 ? 300 : totals.revenue >= 50000 ? 150 : 0
+
   // Per-CSR performance breakdown
   const csrPerformance = Object.values(
     enrichedReports.reduce((acc, r) => {
       const key = r.employee_id
       if (!acc[key]) {
-        acc[key] = { name: r.csrName, reports: 0, totalBookingRate: 0, totalBooked: 0, totalJobsBooked: 0 }
+        acc[key] = { name: r.csrName, reports: 0, totalBookingRate: 0, totalBooked: 0, totalJobsBooked: 0, totalRevenue: 0 }
       }
       acc[key].reports++
       acc[key].totalBookingRate += r.bookingRate
       acc[key].totalBooked += parseInt(r.disp_booked) || 0
       acc[key].totalJobsBooked += r.jobCount
+      acc[key].totalRevenue += r.revenue
       return acc
     }, {})
   ).map(csr => ({
@@ -164,6 +196,7 @@ export default function CSRReportsView() {
       'Total Msgs Sent', 'Total Msgs Received',
       'Booked', 'Quoted', 'Follow-up', 'Lost',
       'Booking Rate', 'Missed Rate', 'Speed-to-Lead (min)', 'Jobs Booked',
+      'Revenue', 'Upsells', 'Review Assists', 'Win-Backs', 'Cancellations', 'No-Shows',
     ]
     const rows = enrichedReports.map(r => [
       r.report_date,
@@ -187,6 +220,12 @@ export default function CSRReportsView() {
       r.missedCallRate + '%',
       r.speed_to_lead_minutes != null ? r.speed_to_lead_minutes : '',
       r.jobCount,
+      r.revenue,
+      r.upsell_count || 0,
+      r.review_assists || 0,
+      r.winback_bookings || 0,
+      r.cancellation_count || 0,
+      r.noshow_count || 0,
     ])
     rows.push([
       'TOTAL', '', totals.inbound, totals.outbound, totals.missed,
@@ -195,6 +234,8 @@ export default function CSRReportsView() {
       totals.booked, totals.quoted, totals.followup, totals.lost,
       avgBookingRate + '%', avgMissedRate + '%', avgStl != null ? avgStl : '',
       totals.jobsBooked,
+      totals.revenue, totals.upsells, totals.reviews, totals.winbacks,
+      totals.cancellations, totals.noShows,
     ])
     const csv = [headers, ...rows].map(row => row.join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
@@ -309,32 +350,34 @@ export default function CSRReportsView() {
       {/* Summary Cards */}
       {!isLoading && reports.length > 0 && (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             <div className="p-4 rounded-xl bg-gradient-to-br from-emerald-600 to-emerald-800 text-white">
               <div className="flex items-center gap-2 mb-2">
                 <TrendingUp className="w-4 h-4 opacity-80" />
                 <span className="text-xs font-medium opacity-80">Avg Booking Rate</span>
               </div>
               <div className="text-2xl font-bold">{avgBookingRate}%</div>
-              <div className="text-xs opacity-60 mt-1">Target: 60%+</div>
+              <div className="text-xs opacity-60 mt-1">{payPeriodTier.label}</div>
             </div>
 
             <div className="p-4 rounded-xl bg-gradient-to-br from-violet-600 to-violet-800 text-white">
               <div className="flex items-center gap-2 mb-2">
                 <Target className="w-4 h-4 opacity-80" />
-                <span className="text-xs font-medium opacity-80">Total Jobs Booked</span>
+                <span className="text-xs font-medium opacity-80">Total Booked</span>
               </div>
-              <div className="text-2xl font-bold">{totals.jobsBooked}</div>
-              <div className="text-xs opacity-60 mt-1">{totals.booked} dispositions booked</div>
+              <div className="text-2xl font-bold">{totals.booked}</div>
+              <div className="text-xs opacity-60 mt-1">{totals.jobsBooked} jobs logged</div>
             </div>
 
             <div className="p-4 rounded-xl bg-gradient-to-br from-amber-600 to-amber-800 text-white">
               <div className="flex items-center gap-2 mb-2">
-                <Phone className="w-4 h-4 opacity-80" />
-                <span className="text-xs font-medium opacity-80">Avg Missed Rate</span>
+                <DollarSign className="w-4 h-4 opacity-80" />
+                <span className="text-xs font-medium opacity-80">Revenue</span>
               </div>
-              <div className="text-2xl font-bold">{avgMissedRate}%</div>
-              <div className="text-xs opacity-60 mt-1">Target: Under 10%</div>
+              <div className="text-2xl font-bold">${totals.revenue.toLocaleString()}</div>
+              <div className="text-xs opacity-60 mt-1">
+                {revenueMilestoneBonus > 0 ? `+$${revenueMilestoneBonus} milestone` : `$${(50000 - totals.revenue).toLocaleString()} to milestone`}
+              </div>
             </div>
 
             <div className="p-4 rounded-xl bg-gradient-to-br from-cyan-600 to-cyan-800 text-white">
@@ -351,10 +394,88 @@ export default function CSRReportsView() {
                 <Clock className="w-4 h-4 opacity-80" />
                 <span className="text-xs font-medium opacity-80">Avg Speed-to-Lead</span>
               </div>
-              <div className="text-2xl font-bold">{avgStl != null ? `${avgStl}m` : '—'}</div>
+              <div className="text-2xl font-bold">{avgStl != null ? `${avgStl}m` : '--'}</div>
               <div className="text-xs opacity-60 mt-1">Target: Under 5 min</div>
             </div>
+
+            <div className="p-4 rounded-xl bg-gradient-to-br from-yellow-600 to-yellow-800 text-white">
+              <div className="flex items-center gap-2 mb-2">
+                <Trophy className="w-4 h-4 opacity-80" />
+                <span className="text-xs font-medium opacity-80">Est. Bonus</span>
+              </div>
+              <div className="text-2xl font-bold">${payPeriodTotalBonus + revenueMilestoneBonus}</div>
+              <div className="text-xs opacity-60 mt-1">
+                {payPeriodMultiplier < 1 ? 'Guardrails applied' : `${payPeriodTier.label} tier`}
+              </div>
+            </div>
           </div>
+
+          {/* Pay Period Bonus Breakdown */}
+          {(selectedPreset === 'Pay Period' || selectedPreset === 'Last Pay Period' || enrichedReports.length >= 5) && (
+            <div className="bg-card-bg border border-card-border rounded-xl p-5">
+              <h3 className="text-sm font-semibold text-accent-gold mb-4 flex items-center gap-2">
+                <DollarSign className="w-4 h-4" />
+                Bonus Breakdown ({dateRange.start} to {dateRange.end})
+              </h3>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                <div>
+                  <p className="text-slate-400">Per-Booking</p>
+                  <p className="text-slate-100 font-semibold">
+                    {totals.booked} x ${payPeriodTier.perBooking} = ${payPeriodPerBookingBonus}
+                    {payPeriodMultiplier < 1 && (
+                      <span className="text-accent-red text-xs block">
+                        After guardrails: ${adjustedPerBookingBonus}
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-slate-400">Tier Bonus</p>
+                  <p className="text-slate-100 font-semibold">${payPeriodTier.tierBonus}</p>
+                </div>
+                <div>
+                  <p className="text-slate-400">Accelerators</p>
+                  <p className="text-slate-100 font-semibold">
+                    ${totals.acceleratorBonus}
+                    <span className="text-xs text-slate-500 block">
+                      {totals.upsells} upsells, {totals.reviews} reviews, {totals.winbacks} winbacks
+                    </span>
+                  </p>
+                </div>
+                <div>
+                  <p className="text-slate-400">Revenue Milestone</p>
+                  <p className="text-slate-100 font-semibold">
+                    ${revenueMilestoneBonus}
+                    <span className="text-xs text-slate-500 block">
+                      {totals.revenue >= 75000 ? '$75K reached' : totals.revenue >= 50000 ? '$50K reached' : `$${totals.revenue.toLocaleString()} / $50K`}
+                    </span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Guardrail warnings */}
+              {(payPeriodCancellationRate > 20 || payPeriodNoshowRate > 15) && (
+                <div className="mt-3 p-3 bg-accent-red/10 border border-accent-red/30 rounded-lg">
+                  <div className="flex items-center gap-2 text-sm text-accent-red">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <div>
+                      {payPeriodCancellationRate > 20 && (
+                        <p>Cancellation rate: {Math.round(payPeriodCancellationRate)}% — bonus reduced 50%</p>
+                      )}
+                      {payPeriodNoshowRate > 15 && (
+                        <p>No-show rate: {Math.round(payPeriodNoshowRate)}% — bonus reduced 25%</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-4 pt-3 border-t border-card-border flex justify-between items-center">
+                <span className="text-accent-gold font-semibold">Estimated Total Bonus</span>
+                <span className="text-accent-gold font-bold text-xl">${payPeriodTotalBonus + revenueMilestoneBonus}</span>
+              </div>
+            </div>
+          )}
 
           {/* Data Table */}
           <div className="bg-card-bg border border-card-border rounded-xl overflow-hidden">
@@ -366,20 +487,21 @@ export default function CSRReportsView() {
                     <th className="text-left py-3 px-4 text-slate-400 font-medium">CSR</th>
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">In</th>
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">Out</th>
-                    <th className="text-center py-3 px-3 text-slate-400 font-medium">SMS</th>
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">Msgs</th>
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">Booked</th>
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">Book %</th>
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">Miss %</th>
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">STL</th>
+                    <th className="text-center py-3 px-3 text-slate-400 font-medium">Rev</th>
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">Bonus</th>
                   </tr>
                 </thead>
                 <tbody>
                   {enrichedReports.map(r => {
-                    const smsTotal = (parseInt(r.total_sms_sent) || 0) + (parseInt(r.total_sms_received) || 0)
                     const msgsTotal = (parseInt(r.total_messages_sent) || 0) + (parseInt(r.total_messages_received) || 0)
                     const stlMin = r.speed_to_lead_minutes != null && r.speed_to_lead_minutes > 0 ? r.speed_to_lead_minutes : null
+                    const dailyBonus = r.accelerators.totalAccelerator +
+                      (r.bookingRate >= 60 ? (r.disp_booked || 0) * r.tier.perBooking : 0)
 
                     return (
                       <tr key={r.id} className="border-b border-card-border/50 hover:bg-slate-800/30 transition-colors">
@@ -387,8 +509,7 @@ export default function CSRReportsView() {
                         <td className="py-3 px-4 text-slate-200 font-medium">{r.csrName}</td>
                         <td className="py-3 px-3 text-center text-slate-300">{r.total_inbound_calls || 0}</td>
                         <td className="py-3 px-3 text-center text-slate-300">{r.total_outbound_calls || 0}</td>
-                        <td className="py-3 px-3 text-center text-slate-300">{smsTotal || '—'}</td>
-                        <td className="py-3 px-3 text-center text-slate-300">{msgsTotal || '—'}</td>
+                        <td className="py-3 px-3 text-center text-slate-300">{msgsTotal || '--'}</td>
                         <td className="py-3 px-3 text-center text-slate-100 font-semibold">{r.disp_booked || 0}</td>
                         <td className="py-3 px-3 text-center">
                           <span className={`font-semibold ${r.tier.color}`}>{r.bookingRate}%</span>
@@ -403,12 +524,19 @@ export default function CSRReportsView() {
                             <span className={`font-semibold ${stlMin < 5 ? 'text-accent-green' : stlMin < 10 ? 'text-accent-gold' : 'text-accent-red'}`}>
                               {stlMin}m
                             </span>
-                          ) : '—'}
+                          ) : '--'}
+                        </td>
+                        <td className="py-3 px-3 text-center text-slate-300">
+                          {r.revenue > 0 ? `$${r.revenue.toLocaleString()}` : '--'}
                         </td>
                         <td className="py-3 px-3 text-center">
-                          {r.bookingRate >= 60
-                            ? <CheckCircle2 className="w-4 h-4 text-accent-green mx-auto" />
-                            : <XCircle className="w-4 h-4 text-accent-red mx-auto" />}
+                          {dailyBonus > 0 ? (
+                            <span className="text-accent-gold font-medium">${dailyBonus}</span>
+                          ) : (
+                            r.bookingRate >= 60
+                              ? <CheckCircle2 className="w-4 h-4 text-accent-green mx-auto" />
+                              : <XCircle className="w-4 h-4 text-accent-red mx-auto" />
+                          )}
                         </td>
                       </tr>
                     )
@@ -419,13 +547,15 @@ export default function CSRReportsView() {
                     <td className="py-3 px-4 text-slate-400">{enrichedReports.length} reports</td>
                     <td className="py-3 px-3 text-center text-slate-200">{totals.inbound}</td>
                     <td className="py-3 px-3 text-center text-slate-200">{totals.outbound}</td>
-                    <td className="py-3 px-3 text-center text-slate-200">{totals.smsSent + totals.smsReceived}</td>
                     <td className="py-3 px-3 text-center text-slate-200">{totals.msgsSent + totals.msgsReceived}</td>
                     <td className="py-3 px-3 text-center text-slate-100">{totals.booked}</td>
                     <td className="py-3 px-3 text-center text-kanai-blue-light">{avgBookingRate}%</td>
                     <td className="py-3 px-3 text-center text-slate-200">{avgMissedRate}%</td>
-                    <td className="py-3 px-3 text-center text-slate-200">{avgStl != null ? `${avgStl}m` : '—'}</td>
-                    <td className="py-3 px-3"></td>
+                    <td className="py-3 px-3 text-center text-slate-200">{avgStl != null ? `${avgStl}m` : '--'}</td>
+                    <td className="py-3 px-3 text-center text-slate-200">${totals.revenue.toLocaleString()}</td>
+                    <td className="py-3 px-3 text-center text-accent-gold font-bold">
+                      ${payPeriodTotalBonus + revenueMilestoneBonus}
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -468,8 +598,8 @@ export default function CSRReportsView() {
                       }`}>
                         {csr.tier.label}
                       </span>
-                      <div className="w-20 text-right text-xs text-slate-400">
-                        {csr.totalBooked} booked
+                      <div className="w-24 text-right text-xs text-slate-400">
+                        ${csr.totalRevenue.toLocaleString()}
                       </div>
                     </div>
                   ))
