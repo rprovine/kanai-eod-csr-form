@@ -95,10 +95,9 @@ The EOD report has 13 sections:
 
 - **Booking Rate** -- Booked / (Booked + Quoted + Follow-Up + Lost). Non-qualified excluded.
 - **Missed Call Rate** -- Missed / Total Inbound (target: under 10%). Calculated from manual entries.
-- **Disposition Logging Rate** -- Total dispositions / Qualified calls (target: 95%+)
 - **Speed-to-Lead** -- Median response time from GHL conversations (target: under 5 min)
 - **Follow-Up Completion** -- Completed / Total follow-ups (target: 100%)
-- **Bonus Eligibility** -- All 5 activity minimums must be met
+- **Bonus Eligibility** -- All 3 activity minimums must be met
 
 ### Performance Tiers (based on booking rate)
 
@@ -111,8 +110,6 @@ The EOD report has 13 sections:
 
 ### Bonus Eligibility Requirements (all must be met)
 
-- Qualified calls >= 20
-- Disposition logging rate >= 95%
 - Speed-to-lead < 5 minutes
 - Follow-up completion = 100%
 - Missed call rate < 10%
