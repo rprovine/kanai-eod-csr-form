@@ -15,6 +15,41 @@ export async function fetchEmployees() {
   return data || []
 }
 
+export async function fetchReports({ startDate, endDate, employeeId } = {}) {
+  if (!isSupabaseConfigured()) return { reports: [], jobsBooked: [] }
+
+  let query = supabase
+    .from(TABLES.eod_reports)
+    .select('*, csr_employees(name)')
+    .eq('status', 'submitted')
+    .order('report_date', { ascending: true })
+
+  if (startDate) query = query.gte('report_date', startDate)
+  if (endDate) query = query.lte('report_date', endDate)
+  if (employeeId) query = query.eq('employee_id', employeeId)
+
+  const { data, error } = await query
+  if (error) {
+    console.error('Error fetching reports:', error)
+    return { reports: [], jobsBooked: [] }
+  }
+
+  const reports = data || []
+
+  // Fetch jobs booked for these reports
+  let jobsBooked = []
+  if (reports.length > 0) {
+    const reportIds = reports.map(r => r.id)
+    const { data: jobs, error: jobsError } = await supabase
+      .from(TABLES.jobs_booked)
+      .select('*')
+      .in('eod_report_id', reportIds)
+    if (!jobsError) jobsBooked = jobs || []
+  }
+
+  return { reports, jobsBooked }
+}
+
 export async function saveEodReport(formData) {
   if (!isSupabaseConfigured()) {
     console.warn('Supabase not configured — report saved locally only')

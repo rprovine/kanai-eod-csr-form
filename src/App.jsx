@@ -15,6 +15,7 @@ import WorkizActivitySection from './components/eod-form/WorkizActivitySection'
 import PipelineCheckSection from './components/eod-form/PipelineCheckSection'
 import NotesSection from './components/eod-form/NotesSection'
 import KPIDashboardSection from './components/eod-form/KPIDashboardSection'
+import CSRReportsView from './components/reports/CSRReportsView'
 import { useEodForm } from './hooks/useEodForm'
 import { useAutoSave, clearSavedDraft } from './hooks/useAutoSave'
 import { useGhlPrefill } from './hooks/useGhlPrefill'
@@ -108,6 +109,7 @@ function SubmittedView({ formData, onNewReport }) {
 export default function App() {
   const { formData, setField: rawSetField, setFields, addArrayItem, updateArrayItem, removeArrayItem, loadState, resetForm } = useEodForm()
   const ghl = useGhlPrefill(setFields)
+  const [view, setView] = useState('form')
   const [currentSection, setCurrentSection] = useState(1)
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
@@ -210,16 +212,24 @@ export default function App() {
     }
   }
 
+  if (view === 'reports') {
+    return (
+      <FormLayout view="reports" onViewChange={setView}>
+        <CSRReportsView />
+      </FormLayout>
+    )
+  }
+
   if (isSubmitted) {
     return (
-      <FormLayout>
+      <FormLayout view="form" onViewChange={setView}>
         <SubmittedView formData={formData} onNewReport={handleNewReport} />
       </FormLayout>
     )
   }
 
   return (
-    <FormLayout>
+    <FormLayout view="form" onViewChange={setView}>
       <div className="space-y-4">
         <ProgressIndicator
           currentSection={currentSection}
