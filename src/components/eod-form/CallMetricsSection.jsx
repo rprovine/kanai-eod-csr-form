@@ -24,6 +24,10 @@ export default function CallMetricsSection({ formData, setField, ghl }) {
 
   const hasMessagingData = (formData.total_messages_sent || 0) + (formData.total_messages_received || 0) > 0
   const hasStlData = formData.speed_to_lead_minutes != null && formData.speed_to_lead_minutes > 0
+  const stlDetail = ghl?.speedToLeadDetail
+  const stlChannels = stlDetail?.by_channel || {}
+
+  const channelLabels = { calls: 'Calls', sms: 'SMS', facebook: 'Facebook', instagram: 'Instagram' }
 
   return (
     <FormCard title="Call & Messaging Activity" subtitle="Section 3 of 13 — From GHL" icon={Phone}>
@@ -185,6 +189,21 @@ export default function CallMetricsSection({ formData, setField, ghl }) {
                 Based on {formData.speed_to_lead_conversations} conversation{formData.speed_to_lead_conversations !== 1 ? 's' : ''}
                 {' '}<button type="button" onClick={() => setStlOverride(true)} className="text-kanai-blue-light hover:underline">Override</button>
               </p>
+              {Object.keys(stlChannels).length > 1 && (
+                <div className="mt-2 space-y-1">
+                  {Object.entries(stlChannels).map(([ch, data]) => (
+                    <div key={ch} className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-400">{channelLabels[ch] || ch}</span>
+                      <span className={`font-medium ${
+                        data.avg_minutes < 5 ? 'text-accent-green' :
+                        data.avg_minutes < 10 ? 'text-accent-gold' : 'text-accent-red'
+                      }`}>
+                        {data.avg_minutes} min <span className="text-slate-500 font-normal">({data.count})</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           ) : (
             <>

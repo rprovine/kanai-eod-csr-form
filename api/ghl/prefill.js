@@ -218,8 +218,30 @@ function analyzeMessagingMetrics(allDateMessages, ghlUserId) {
   return counts;
 }
 
+// Classify a GHL message type into a channel
+function getChannel(msgType) {
+  if (msgType === 1 || msgType === 24) return 'calls';
+  if (msgType === 2) return 'sms';
+  if (msgType === 11) return 'facebook';
+  if (msgType === 18) return 'instagram';
+  return 'other';
+}
+
+// Summarize an array of gap values
+function summarizeGaps(gaps) {
+  if (gaps.length === 0) return null;
+  const avg = gaps.reduce((s, g) => s + g, 0) / gaps.length;
+  return {
+    avg_minutes: Math.round(avg * 10) / 10,
+    min_minutes: Math.round(Math.min(...gaps) * 10) / 10,
+    max_minutes: Math.round(Math.max(...gaps) * 10) / 10,
+    count: gaps.length,
+  };
+}
+
 // Calculate speed-to-lead from message data
 // Groups by conversation, finds first inbound → first outbound response gap
+// Returns overall average plus per-channel breakdown (calls, sms, facebook, instagram)
 function calculateSpeedToLead(allDateMessages, ghlUserId) {
   // Group messages by conversationId
   const convos = {};
@@ -229,7 +251,8 @@ function calculateSpeedToLead(allDateMessages, ghlUserId) {
     convos[msg.conversationId].push(msg);
   }
 
-  const gaps = [];
+  const allGaps = [];
+  const channelGaps = { calls: [], sms: [], facebook: [], instagram: [] };
 
   for (const messages of Object.values(convos)) {
     // Sort by dateAdded ascending
@@ -256,28 +279,40 @@ function calculateSpeedToLead(allDateMessages, ghlUserId) {
     // Ignore gaps > 480 min (8 hours) as likely not same-context
     if (gapMinutes > 480 || gapMinutes < 0) continue;
 
-    gaps.push(gapMinutes);
+    allGaps.push(gapMinutes);
+
+    // Categorize by the channel of the inbound message (how the lead came in)
+    const channel = getChannel(firstToday.type);
+    if (channelGaps[channel]) {
+      channelGaps[channel].push(gapMinutes);
+    }
   }
 
-  if (gaps.length === 0) return null;
+  if (allGaps.length === 0) return null;
 
-  const avg = gaps.reduce((s, g) => s + g, 0) / gaps.length;
-  const min = Math.min(...gaps);
-  const max = Math.max(...gaps);
+  const overall = summarizeGaps(allGaps);
 
   // Map to enum bucket
   let bucket;
-  if (avg < 5) bucket = 'under_5';
-  else if (avg < 10) bucket = '5_to_10';
-  else if (avg < 15) bucket = '10_to_15';
+  if (overall.avg_minutes < 5) bucket = 'under_5';
+  else if (overall.avg_minutes < 10) bucket = '5_to_10';
+  else if (overall.avg_minutes < 15) bucket = '10_to_15';
   else bucket = 'over_15';
 
+  // Build per-channel breakdown (only include channels with data)
+  const byChannel = {};
+  for (const [ch, gaps] of Object.entries(channelGaps)) {
+    const summary = summarizeGaps(gaps);
+    if (summary) byChannel[ch] = summary;
+  }
+
   return {
-    avg_minutes: Math.round(avg * 10) / 10,
-    min_minutes: Math.round(min * 10) / 10,
-    max_minutes: Math.round(max * 10) / 10,
-    conversations_counted: gaps.length,
+    avg_minutes: overall.avg_minutes,
+    min_minutes: overall.min_minutes,
+    max_minutes: overall.max_minutes,
+    conversations_counted: allGaps.length,
     bucket,
+    by_channel: byChannel,
   };
 }
 
