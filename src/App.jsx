@@ -17,6 +17,7 @@ import NotesSection from './components/eod-form/NotesSection'
 import KPIDashboardSection from './components/eod-form/KPIDashboardSection'
 import { useEodForm } from './hooks/useEodForm'
 import { useAutoSave, clearSavedDraft } from './hooks/useAutoSave'
+import { useGhlPrefill } from './hooks/useGhlPrefill'
 import { calcAllKPIs } from './lib/kpi-calculations'
 import { FORM_SECTIONS, COMMUNICATION_CHANNELS, PIPELINE_CHECKS, CSR_EMPLOYEES_FALLBACK } from './lib/constants'
 import { fetchEmployees, saveEodReport } from './lib/supabase-data'
@@ -105,12 +106,19 @@ function SubmittedView({ formData, onNewReport }) {
 }
 
 export default function App() {
-  const { formData, setField, setFields, addArrayItem, updateArrayItem, removeArrayItem, loadState, resetForm } = useEodForm()
+  const { formData, setField: rawSetField, setFields, addArrayItem, updateArrayItem, removeArrayItem, loadState, resetForm } = useEodForm()
+  const ghl = useGhlPrefill(setFields)
   const [currentSection, setCurrentSection] = useState(1)
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [employees, setEmployees] = useState(CSR_EMPLOYEES_FALLBACK)
+
+  // Wrap setField to track GHL edits
+  const setField = useCallback((field, value) => {
+    ghl.trackFieldEdit(field, value)
+    rawSetField(field, value)
+  }, [rawSetField, ghl])
 
   useAutoSave(formData, loadState)
 
@@ -122,6 +130,13 @@ export default function App() {
       }
     })
   }, [])
+
+  // Load GHL data when employee and date are both set
+  useEffect(() => {
+    if (formData.employee_id && formData.report_date) {
+      ghl.loadGhlData(formData.employee_id, formData.report_date)
+    }
+  }, [formData.employee_id, formData.report_date, ghl.loadGhlData])
 
   const kpis = useMemo(() => calcAllKPIs(formData), [formData])
 
@@ -180,7 +195,7 @@ export default function App() {
     switch (currentSection) {
       case 1: return <HeaderSection {...formProps} employees={employees} />
       case 2: return <CommunicationsSection {...formProps} />
-      case 3: return <CallMetricsSection {...formProps} />
+      case 3: return <CallMetricsSection {...formProps} ghl={ghl} />
       case 4: return <DispositionsSection {...formProps} />
       case 5: return <JobsBookedSection {...formProps} />
       case 6: return <EmailSubmissionsSection {...formProps} />
@@ -188,7 +203,7 @@ export default function App() {
       case 8: return <FollowUpsSection {...formProps} />
       case 9: return <DocketActivitySection {...formProps} />
       case 10: return <WorkizActivitySection {...formProps} />
-      case 11: return <PipelineCheckSection {...formProps} />
+      case 11: return <PipelineCheckSection {...formProps} ghl={ghl} />
       case 12: return <NotesSection {...formProps} />
       case 13: return <KPIDashboardSection {...formProps} />
       default: return null

@@ -1,9 +1,16 @@
 import { cn } from '../../lib/utils'
 
-export function Label({ children, htmlFor, className }) {
+export function Label({ children, htmlFor, className, source }) {
   return (
     <label htmlFor={htmlFor} className={cn('block text-sm font-medium text-slate-300 mb-1.5', className)}>
-      {children}
+      <span className="flex items-center gap-1.5">
+        {children}
+        {source === 'system' && (
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-accent-green/15 text-accent-green border border-accent-green/30">
+            GHL
+          </span>
+        )}
+      </span>
     </label>
   )
 }
