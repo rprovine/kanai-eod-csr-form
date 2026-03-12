@@ -239,10 +239,29 @@ function summarizeGaps(gaps) {
   };
 }
 
+// Check if a timestamp falls within shift hours (Hawaii time)
+function isDuringShift(isoStr, shiftHours) {
+  const d = new Date(isoStr);
+  // Convert to Hawaii time components
+  const parts = d.toLocaleString('en-US', {
+    timeZone: 'Pacific/Honolulu',
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+  }).split(':');
+  const hour = parseInt(parts[0]);
+  const minute = parseInt(parts[1]);
+  const timeMinutes = hour * 60 + minute;
+  const startMinutes = shiftHours.shiftStartHour * 60 + shiftHours.shiftStartMin;
+  const endMinutes = shiftHours.shiftEndHour * 60 + shiftHours.shiftEndMin;
+  return timeMinutes >= startMinutes && timeMinutes <= endMinutes;
+}
+
 // Calculate speed-to-lead from message data
 // Groups by conversation, finds first inbound → first outbound response gap
+// Only counts inbound messages that arrived during shift hours
 // Returns overall average plus per-channel breakdown (calls, sms, facebook, instagram)
-function calculateSpeedToLead(allDateMessages, ghlUserId) {
+function calculateSpeedToLead(allDateMessages, ghlUserId, date, shiftHours) {
   // Group messages by conversationId
   const convos = {};
   for (const msg of allDateMessages) {
@@ -263,6 +282,9 @@ function calculateSpeedToLead(allDateMessages, ghlUserId) {
 
     // Only count conversations where first message today is inbound (new lead reaching out)
     if (firstToday.direction !== 'inbound') continue;
+
+    // Skip inbound messages that arrived outside shift hours
+    if (shiftHours && !isDuringShift(firstToday.dateAdded, shiftHours)) continue;
 
     // Find first outbound response by this CSR
     const firstResponse = messages.find(m =>
@@ -475,10 +497,16 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Database not configured' });
   }
 
-  const { employee_id, date } = req.query;
+  const { employee_id, date, shift_start, shift_end } = req.query;
   if (!employee_id || !date) {
     return res.status(400).json({ error: 'employee_id and date are required' });
   }
+
+  // Shift hours for speed-to-lead filtering (default: 08:00-16:30 HST)
+  const shiftStartHour = shift_start ? parseInt(shift_start.split(':')[0]) : 8;
+  const shiftStartMin = shift_start ? parseInt(shift_start.split(':')[1]) : 0;
+  const shiftEndHour = shift_end ? parseInt(shift_end.split(':')[0]) : 16;
+  const shiftEndMin = shift_end ? parseInt(shift_end.split(':')[1]) : 30;
 
   try {
     // Look up GHL user ID from employee mapping
@@ -511,7 +539,7 @@ export default async function handler(req, res) {
     // Analyze the data
     const callMetrics = analyzeCallMessages(messageData.userCalls, messageData.totalInbound, messageData.allDateMessages, ghlUserId, assignedConvIds);
     const messagingMetrics = analyzeMessagingMetrics(messageData.allDateMessages, ghlUserId);
-    const speedToLead = calculateSpeedToLead(messageData.allDateMessages, ghlUserId);
+    const speedToLead = calculateSpeedToLead(messageData.allDateMessages, ghlUserId, date, { shiftStartHour, shiftStartMin, shiftEndHour, shiftEndMin });
     const pipelineData = analyzeOpportunities(opportunities, stageMap, date);
 
     // Build prefill fields

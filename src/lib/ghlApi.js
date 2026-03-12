@@ -3,11 +3,13 @@
 
 const BASE = '/api/ghl';
 
-export async function fetchPrefill(employeeId, date) {
+export async function fetchPrefill(employeeId, date, { shiftStart, shiftEnd } = {}) {
   if (!employeeId || !date) return null;
 
   try {
     const params = new URLSearchParams({ employee_id: employeeId, date });
+    if (shiftStart) params.set('shift_start', shiftStart);
+    if (shiftEnd) params.set('shift_end', shiftEnd);
     const response = await fetch(`${BASE}/prefill?${params}`);
 
     if (!response.ok) {

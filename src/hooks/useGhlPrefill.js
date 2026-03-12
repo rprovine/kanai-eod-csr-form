@@ -32,11 +32,11 @@ export function useGhlPrefill(setFields) {
   const lastFetchRef = useRef(null)
 
   // Load GHL data and prefill form fields
-  const loadGhlData = useCallback(async (employeeId, date) => {
+  const loadGhlData = useCallback(async (employeeId, date, { shiftStart, shiftEnd } = {}) => {
     if (!employeeId || !date) return
 
-    // Prevent duplicate fetches
-    const key = `${employeeId}-${date}`
+    // Prevent duplicate fetches (shift times change the key so refresh with times re-fetches)
+    const key = `${employeeId}-${date}-${shiftStart || ''}-${shiftEnd || ''}`
     if (lastFetchRef.current === key) return
     lastFetchRef.current = key
 
@@ -46,7 +46,7 @@ export function useGhlPrefill(setFields) {
     try {
       // Fetch prefill and pipeline data in parallel
       const [prefillResult, pipelineResult] = await Promise.all([
-        fetchPrefill(employeeId, date),
+        fetchPrefill(employeeId, date, { shiftStart, shiftEnd }),
         fetchPipelineStatus(employeeId, date),
       ])
 
@@ -86,10 +86,10 @@ export function useGhlPrefill(setFields) {
     }
   }, [setFields])
 
-  // Refresh GHL data (manual trigger)
-  const refreshGhlData = useCallback(async (employeeId, date) => {
+  // Refresh GHL data (manual trigger, passes shift times for accurate STL)
+  const refreshGhlData = useCallback(async (employeeId, date, { shiftStart, shiftEnd } = {}) => {
     lastFetchRef.current = null // Reset to allow re-fetch
-    await loadGhlData(employeeId, date)
+    await loadGhlData(employeeId, date, { shiftStart, shiftEnd })
   }, [loadGhlData])
 
   // Track when a CSR edits a GHL-prefilled field

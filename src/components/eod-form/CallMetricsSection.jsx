@@ -49,7 +49,7 @@ export default function CallMetricsSection({ formData, setField, ghl }) {
           </div>
           <button
             type="button"
-            onClick={() => ghl.refreshGhlData(formData.employee_id, formData.report_date)}
+            onClick={() => ghl.refreshGhlData(formData.employee_id, formData.report_date, { shiftStart: formData.shift_start, shiftEnd: formData.shift_end })}
             disabled={ghl.loading || !formData.employee_id}
             className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 transition-colors disabled:opacity-30"
           >
