@@ -22,13 +22,11 @@ export function getDefaultFormState() {
     // Section 3: Call & Messaging Metrics
     total_inbound_calls: 0,
     total_outbound_calls: 0,
-    total_qualified_calls: 0,
     missed_calls: 0,
     missed_call_rate: 0,
     speed_to_lead: '',
     speed_to_lead_minutes: null,
     speed_to_lead_conversations: 0,
-    disposition_logging_rate: 0,
     total_sms_sent: 0,
     total_sms_received: 0,
     total_fb_messages_sent: 0,

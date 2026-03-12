@@ -1,4 +1,4 @@
-import { BarChart3, AlertTriangle, TrendingUp } from 'lucide-react'
+import { BarChart3, TrendingUp } from 'lucide-react'
 import FormCard from '../shared/FormCard'
 import { Label, NumberInput } from '../shared/FormField'
 import { DISPOSITION_TYPES } from '../../lib/constants'
@@ -9,8 +9,6 @@ export default function DispositionsSection({ formData, setField, ghl }) {
   const totalDispositions = DISPOSITION_TYPES.reduce(
     (sum, d) => sum + (formData[d.key] || 0), 0
   )
-  const qualifiedCalls = formData.total_qualified_calls || 0
-  const showAntiGamingWarning = qualifiedCalls > 0 && totalDispositions < qualifiedCalls
   const tier = getPerformanceTier(formData.daily_booking_rate)
 
   return (
@@ -35,19 +33,10 @@ export default function DispositionsSection({ formData, setField, ghl }) {
 
       {/* Auto-calculated metrics */}
       <div className="mt-6 space-y-3">
-        <div className="grid grid-cols-2 gap-3">
+        <div>
           <div className="bg-slate-800/50 rounded-lg p-3 text-center">
             <p className="text-xs text-slate-400 mb-1">Total Dispositions</p>
             <p className="text-xl font-bold text-slate-100">{totalDispositions}</p>
-          </div>
-          <div className="bg-slate-800/50 rounded-lg p-3 text-center">
-            <p className="text-xs text-slate-400 mb-1">Disposition Rate</p>
-            <p className={`text-xl font-bold ${
-              formData.disposition_logging_rate >= 95 ? 'text-accent-green' :
-              formData.disposition_logging_rate >= 85 ? 'text-accent-gold' : 'text-accent-red'
-            }`}>
-              {formData.disposition_logging_rate}%
-            </p>
           </div>
         </div>
 
@@ -81,19 +70,6 @@ export default function DispositionsSection({ formData, setField, ghl }) {
         </div>
       </div>
 
-      {/* Anti-gaming warning */}
-      {showAntiGamingWarning && (
-        <div className="mt-4 flex items-start gap-2 bg-accent-gold/10 border border-accent-gold/30 rounded-lg px-4 py-3">
-          <AlertTriangle className="w-4 h-4 text-accent-gold shrink-0 mt-0.5" />
-          <div className="text-sm text-accent-gold">
-            <p className="font-semibold">Disposition Logging Gap Detected</p>
-            <p className="mt-1">
-              {totalDispositions} dispositions logged vs {qualifiedCalls} qualified calls.
-              Unlogged calls default to "Qualified" and count against your booking rate.
-            </p>
-          </div>
-        </div>
-      )}
     </FormCard>
   )
 }

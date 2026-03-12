@@ -80,14 +80,6 @@ export default function CallMetricsSection({ formData, setField, ghl }) {
           <DiscrepancyWarning discrepancy={getDiscrep('total_outbound_calls', formData.total_outbound_calls)} />
         </div>
         <div>
-          <Label>Qualified Calls</Label>
-          <NumberInput
-            value={formData.total_qualified_calls}
-            onChange={(v) => setField('total_qualified_calls', v)}
-            placeholder="0"
-          />
-        </div>
-        <div>
           <Label>Missed Calls</Label>
           <NumberInput
             value={formData.missed_calls}

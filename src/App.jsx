@@ -35,16 +35,8 @@ function ConfirmationModal({ formData, kpis, onConfirm, onCancel, isSubmitting }
             <span className={`font-semibold ${kpis.performanceTier.color}`}>{kpis.bookingRate}%</span>
           </div>
           <div className="flex justify-between py-2 border-b border-card-border">
-            <span className="text-slate-400">Qualified Calls</span>
-            <span className="font-semibold text-slate-100">{kpis.qualifiedCalls}</span>
-          </div>
-          <div className="flex justify-between py-2 border-b border-card-border">
             <span className="text-slate-400">Missed Call Rate</span>
             <span className="font-semibold text-slate-100">{kpis.missedCallRate}%</span>
-          </div>
-          <div className="flex justify-between py-2 border-b border-card-border">
-            <span className="text-slate-400">Disposition Rate</span>
-            <span className="font-semibold text-slate-100">{kpis.dispositionRate}%</span>
           </div>
           <div className="flex justify-between py-2 border-b border-card-border">
             <span className="text-slate-400">Bonus Eligible</span>

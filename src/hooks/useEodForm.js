@@ -1,6 +1,6 @@
 import { useReducer, useCallback } from 'react'
 import { getDefaultFormState } from '../lib/form-defaults'
-import { calcTotalHours, calcMissedCallRate, calcBookingRate, calcDispositionLoggingRate } from '../lib/kpi-calculations'
+import { calcTotalHours, calcMissedCallRate, calcBookingRate } from '../lib/kpi-calculations'
 
 function recalculate(state) {
   const totalHours = calcTotalHours(state.shift_start, state.shift_end)
@@ -11,14 +11,12 @@ function recalculate(state) {
     state.disp_followup_required || 0,
     state.disp_lost || 0
   )
-  const dispositionRate = calcDispositionLoggingRate(state)
 
   return {
     ...state,
     total_hours: totalHours,
     missed_call_rate: Math.round(missedCallRate * 10) / 10,
     daily_booking_rate: Math.round(bookingRate * 10) / 10,
-    disposition_logging_rate: Math.round(dispositionRate * 10) / 10,
   }
 }
 

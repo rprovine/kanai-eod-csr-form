@@ -39,13 +39,6 @@ export default function KPIDashboardSection({ formData }) {
 
   const kpiRows = [
     {
-      label: 'Total Qualified Calls',
-      value: kpis.qualifiedCalls,
-      display: kpis.qualifiedCalls.toString(),
-      target: '20+ per day',
-      status: getKPIStatus(kpis.qualifiedCalls, 20, 'gte'),
-    },
-    {
       label: 'Booking Rate',
       value: kpis.bookingRate,
       display: `${kpis.bookingRate}%`,
@@ -67,13 +60,6 @@ export default function KPIDashboardSection({ formData }) {
       status: stlStatus,
     },
     {
-      label: 'Disposition Logging Rate',
-      value: kpis.dispositionRate,
-      display: `${kpis.dispositionRate}%`,
-      target: '95%+',
-      status: getKPIStatus(kpis.dispositionRate, 95, 'gte'),
-    },
-    {
       label: 'Follow-Ups Completed',
       value: kpis.followupCompletion,
       display: `${kpis.followupCompletion}%`,
@@ -91,9 +77,7 @@ export default function KPIDashboardSection({ formData }) {
 
   // Chart data for the visual
   const chartData = [
-    { name: 'Calls', value: Math.min(kpis.qualifiedCalls, 30), target: 20, fill: getKPIStatus(kpis.qualifiedCalls, 20, 'gte') },
     { name: 'Book %', value: Math.min(kpis.bookingRate, 100), target: 60, fill: getKPIStatus(kpis.bookingRate, 60, 'gte') },
-    { name: 'Disp %', value: Math.min(kpis.dispositionRate, 100), target: 95, fill: getKPIStatus(kpis.dispositionRate, 95, 'gte') },
     { name: 'F/U %', value: Math.min(kpis.followupCompletion, 100), target: 100, fill: getKPIStatus(kpis.followupCompletion, 100, 'gte') },
   ]
 
@@ -157,11 +141,9 @@ export default function KPIDashboardSection({ formData }) {
 
       {/* Activity Minimums Checklist */}
       <div className="mt-6">
-        <h4 className="text-sm font-semibold text-slate-300 mb-3">Activity Minimums (all 5 required for bonus)</h4>
+        <h4 className="text-sm font-semibold text-slate-300 mb-3">Activity Minimums (all 3 required for bonus)</h4>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {[
-            { key: 'qualifiedCalls', label: '20+ qualified calls', met: kpis.activityMinimums.qualifiedCalls },
-            { key: 'dispositionRate', label: '95%+ disposition logging', met: kpis.activityMinimums.dispositionRate },
             { key: 'speedToLead', label: 'Under 5-min speed-to-lead', met: kpis.activityMinimums.speedToLead },
             { key: 'followupCompletion', label: '100% follow-up completion', met: kpis.activityMinimums.followupCompletion },
             { key: 'missedCallRate', label: 'Under 10% missed calls', met: kpis.activityMinimums.missedCallRate },

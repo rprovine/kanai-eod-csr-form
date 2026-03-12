@@ -105,7 +105,6 @@ export default function CSRReportsView() {
   const totals = enrichedReports.reduce((acc, r) => {
     acc.inbound += parseInt(r.total_inbound_calls) || 0
     acc.outbound += parseInt(r.total_outbound_calls) || 0
-    acc.qualified += parseInt(r.total_qualified_calls) || 0
     acc.missed += parseInt(r.missed_calls) || 0
     acc.booked += parseInt(r.disp_booked) || 0
     acc.quoted += parseInt(r.disp_quoted) || 0
@@ -122,7 +121,7 @@ export default function CSRReportsView() {
     }
     return acc
   }, {
-    inbound: 0, outbound: 0, qualified: 0, missed: 0,
+    inbound: 0, outbound: 0, missed: 0,
     booked: 0, quoted: 0, followup: 0, lost: 0, jobsBooked: 0,
     smsSent: 0, smsReceived: 0, msgsSent: 0, msgsReceived: 0,
     stlSum: 0, stlCount: 0,
@@ -143,12 +142,11 @@ export default function CSRReportsView() {
     enrichedReports.reduce((acc, r) => {
       const key = r.employee_id
       if (!acc[key]) {
-        acc[key] = { name: r.csrName, reports: 0, totalBookingRate: 0, totalBooked: 0, totalQualified: 0, totalJobsBooked: 0 }
+        acc[key] = { name: r.csrName, reports: 0, totalBookingRate: 0, totalBooked: 0, totalJobsBooked: 0 }
       }
       acc[key].reports++
       acc[key].totalBookingRate += r.bookingRate
       acc[key].totalBooked += parseInt(r.disp_booked) || 0
-      acc[key].totalQualified += parseInt(r.total_qualified_calls) || 0
       acc[key].totalJobsBooked += r.jobCount
       return acc
     }, {})
@@ -161,7 +159,7 @@ export default function CSRReportsView() {
   // Export CSV
   const exportCSV = () => {
     const headers = [
-      'Date', 'CSR', 'Inbound', 'Outbound', 'Qualified', 'Missed',
+      'Date', 'CSR', 'Inbound', 'Outbound', 'Missed',
       'SMS Sent', 'SMS Received', 'FB Sent', 'FB Received', 'IG Sent', 'IG Received',
       'Total Msgs Sent', 'Total Msgs Received',
       'Booked', 'Quoted', 'Follow-up', 'Lost',
@@ -172,7 +170,6 @@ export default function CSRReportsView() {
       r.csrName,
       r.total_inbound_calls || 0,
       r.total_outbound_calls || 0,
-      r.total_qualified_calls || 0,
       r.missed_calls || 0,
       r.total_sms_sent || 0,
       r.total_sms_received || 0,
@@ -192,7 +189,7 @@ export default function CSRReportsView() {
       r.jobCount,
     ])
     rows.push([
-      'TOTAL', '', totals.inbound, totals.outbound, totals.qualified, totals.missed,
+      'TOTAL', '', totals.inbound, totals.outbound, totals.missed,
       totals.smsSent, totals.smsReceived, '', '', '', '',
       totals.msgsSent, totals.msgsReceived,
       totals.booked, totals.quoted, totals.followup, totals.lost,
@@ -312,16 +309,7 @@ export default function CSRReportsView() {
       {/* Summary Cards */}
       {!isLoading && reports.length > 0 && (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-            <div className="p-4 rounded-xl bg-gradient-to-br from-blue-600 to-blue-800 text-white">
-              <div className="flex items-center gap-2 mb-2">
-                <Phone className="w-4 h-4 opacity-80" />
-                <span className="text-xs font-medium opacity-80">Total Qualified</span>
-              </div>
-              <div className="text-2xl font-bold">{totals.qualified}</div>
-              <div className="text-xs opacity-60 mt-1">{reports.length} report{reports.length !== 1 ? 's' : ''}</div>
-            </div>
-
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
             <div className="p-4 rounded-xl bg-gradient-to-br from-emerald-600 to-emerald-800 text-white">
               <div className="flex items-center gap-2 mb-2">
                 <TrendingUp className="w-4 h-4 opacity-80" />
@@ -378,7 +366,6 @@ export default function CSRReportsView() {
                     <th className="text-left py-3 px-4 text-slate-400 font-medium">CSR</th>
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">In</th>
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">Out</th>
-                    <th className="text-center py-3 px-3 text-slate-400 font-medium">Qual</th>
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">SMS</th>
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">Msgs</th>
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">Booked</th>
@@ -400,7 +387,6 @@ export default function CSRReportsView() {
                         <td className="py-3 px-4 text-slate-200 font-medium">{r.csrName}</td>
                         <td className="py-3 px-3 text-center text-slate-300">{r.total_inbound_calls || 0}</td>
                         <td className="py-3 px-3 text-center text-slate-300">{r.total_outbound_calls || 0}</td>
-                        <td className="py-3 px-3 text-center text-slate-100 font-semibold">{r.total_qualified_calls || 0}</td>
                         <td className="py-3 px-3 text-center text-slate-300">{smsTotal || '—'}</td>
                         <td className="py-3 px-3 text-center text-slate-300">{msgsTotal || '—'}</td>
                         <td className="py-3 px-3 text-center text-slate-100 font-semibold">{r.disp_booked || 0}</td>
@@ -433,7 +419,6 @@ export default function CSRReportsView() {
                     <td className="py-3 px-4 text-slate-400">{enrichedReports.length} reports</td>
                     <td className="py-3 px-3 text-center text-slate-200">{totals.inbound}</td>
                     <td className="py-3 px-3 text-center text-slate-200">{totals.outbound}</td>
-                    <td className="py-3 px-3 text-center text-slate-100">{totals.qualified}</td>
                     <td className="py-3 px-3 text-center text-slate-200">{totals.smsSent + totals.smsReceived}</td>
                     <td className="py-3 px-3 text-center text-slate-200">{totals.msgsSent + totals.msgsReceived}</td>
                     <td className="py-3 px-3 text-center text-slate-100">{totals.booked}</td>

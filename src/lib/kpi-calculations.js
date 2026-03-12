@@ -9,20 +9,6 @@ export function calcBookingRate(booked, quoted, followup, lost) {
   return (booked / denominator) * 100
 }
 
-export function calcDispositionLoggingRate(formData) {
-  const totalDispositions =
-    (formData.disp_booked || 0) +
-    (formData.disp_quoted || 0) +
-    (formData.disp_followup_required || 0) +
-    (formData.disp_not_qualified || 0) +
-    (formData.disp_lost || 0) +
-    (formData.disp_voicemail || 0)
-
-  const qualifiedCalls = formData.total_qualified_calls || 0
-  if (qualifiedCalls === 0) return 0
-  return (totalDispositions / qualifiedCalls) * 100
-}
-
 export function calcTotalHours(shiftStart, shiftEnd) {
   if (!shiftStart || !shiftEnd) return 0
   const [startH, startM] = shiftStart.split(':').map(Number)
@@ -57,10 +43,8 @@ export function calcAllKPIs(formData) {
     formData.disp_followup_required || 0,
     formData.disp_lost || 0
   )
-  const dispositionRate = calcDispositionLoggingRate(formData)
   const followupCompletion = calcFollowupCompletion(formData)
   const performanceTier = getPerformanceTier(bookingRate)
-  const qualifiedCalls = formData.total_qualified_calls || 0
 
   const pipelineClean =
     formData.pipeline_new_leads_contacted &&
@@ -80,8 +64,6 @@ export function calcAllKPIs(formData) {
 
   // Activity minimums
   const activityMinimums = {
-    qualifiedCalls: qualifiedCalls >= 20,
-    dispositionRate: dispositionRate >= 95,
     speedToLead: speedToLeadMet,
     followupCompletion: followupCompletion >= 100,
     missedCallRate: missedCallRate < 10,
@@ -90,12 +72,10 @@ export function calcAllKPIs(formData) {
   const bonusEligible = Object.values(activityMinimums).every(Boolean)
 
   return {
-    qualifiedCalls,
     bookingRate: Math.round(bookingRate * 10) / 10,
     missedCallRate: Math.round(missedCallRate * 10) / 10,
     speedToLead: formData.speed_to_lead,
     speedToLeadMinutes: formData.speed_to_lead_minutes,
-    dispositionRate: Math.round(dispositionRate * 10) / 10,
     followupCompletion: Math.round(followupCompletion * 10) / 10,
     pipelineClean,
     performanceTier,
