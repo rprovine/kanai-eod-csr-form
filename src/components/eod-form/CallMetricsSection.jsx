@@ -64,11 +64,7 @@ export default function CallMetricsSection({ formData, setField, ghl }) {
             onChange={(v) => setField('total_inbound_calls', v)}
             placeholder="0"
           />
-          {ghl?.locationInbound != null && ghl.locationInbound > 0 && (
-            <p className="text-[11px] text-slate-500 mt-1">
-              {ghl.locationInbound} total location inbound today
-            </p>
-          )}
+          <p className="text-[11px] text-slate-500 mt-1">Manual entry</p>
         </div>
         <div>
           <Label source={getSource('total_outbound_calls')}>Outbound Calls</Label>

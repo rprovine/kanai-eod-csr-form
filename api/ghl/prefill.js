@@ -487,20 +487,12 @@ export default async function handler(req, res) {
     fields.total_outbound_calls = callMetrics.outbound;
     sources.total_outbound_calls = 'ghl_calls';
 
-    // Inbound calls: use location-wide total because GHL IVR calls
-    // don't have userId attribution (no way to know who answered)
-    fields.total_inbound_calls = callMetrics.total_location_inbound;
-    sources.total_inbound_calls = 'ghl_location';
+    // Inbound calls: NOT auto-filled. GHL IVR calls don't have userId
+    // attribution, so location-wide totals would be inaccurate for
+    // individual CSRs. CSR enters their own inbound count manually.
 
     fields.missed_calls = callMetrics.missed;
     sources.missed_calls = 'ghl_calls';
-
-    if (callMetrics.total_location_inbound > 0) {
-      fields.missed_call_rate = Math.round(
-        (callMetrics.missed / callMetrics.total_location_inbound) * 100 * 10
-      ) / 10;
-      sources.missed_call_rate = 'ghl_calls';
-    }
 
     // Messaging metrics (new)
     fields.total_sms_sent = messagingMetrics.total_sms_sent;
