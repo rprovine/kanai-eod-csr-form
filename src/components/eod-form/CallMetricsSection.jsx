@@ -172,7 +172,7 @@ export default function CallMetricsSection({ formData, setField, ghl }) {
       {/* Speed-to-Lead + Missed Call Rate */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
         <div>
-          <Label source={getSource('speed_to_lead')}>Average Speed-to-Lead</Label>
+          <Label source={getSource('speed_to_lead')}>Speed-to-Lead</Label>
           {hasStlData && !stlOverride ? (
             <>
               <div className={`px-4 py-2.5 rounded-lg border text-sm font-semibold flex items-center gap-2 ${
@@ -183,7 +183,7 @@ export default function CallMetricsSection({ formData, setField, ghl }) {
                   : 'bg-accent-red/10 border-accent-red/30 text-accent-red'
               }`}>
                 <Clock className="w-4 h-4" />
-                {formData.speed_to_lead_minutes} min avg
+                {formData.speed_to_lead_minutes} min median
               </div>
               <p className="text-[11px] text-slate-500 mt-1">
                 Based on {formData.speed_to_lead_conversations} conversation{formData.speed_to_lead_conversations !== 1 ? 's' : ''}
@@ -195,10 +195,10 @@ export default function CallMetricsSection({ formData, setField, ghl }) {
                     <div key={ch} className="flex items-center justify-between text-[11px]">
                       <span className="text-slate-400">{channelLabels[ch] || ch}</span>
                       <span className={`font-medium ${
-                        data.avg_minutes < 5 ? 'text-accent-green' :
-                        data.avg_minutes < 10 ? 'text-accent-gold' : 'text-accent-red'
+                        (data.median_minutes || data.avg_minutes) < 5 ? 'text-accent-green' :
+                        (data.median_minutes || data.avg_minutes) < 10 ? 'text-accent-gold' : 'text-accent-red'
                       }`}>
-                        {data.avg_minutes} min <span className="text-slate-500 font-normal">({data.count})</span>
+                        {data.median_minutes || data.avg_minutes} min <span className="text-slate-500 font-normal">({data.count})</span>
                       </span>
                     </div>
                   ))}

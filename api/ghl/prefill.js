@@ -227,14 +227,20 @@ function getChannel(msgType) {
   return 'other';
 }
 
-// Summarize an array of gap values
+// Summarize an array of gap values (uses median to resist outlier skew)
 function summarizeGaps(gaps) {
   if (gaps.length === 0) return null;
+  const sorted = [...gaps].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
   const avg = gaps.reduce((s, g) => s + g, 0) / gaps.length;
   return {
+    median_minutes: Math.round(median * 10) / 10,
     avg_minutes: Math.round(avg * 10) / 10,
-    min_minutes: Math.round(Math.min(...gaps) * 10) / 10,
-    max_minutes: Math.round(Math.max(...gaps) * 10) / 10,
+    min_minutes: Math.round(sorted[0] * 10) / 10,
+    max_minutes: Math.round(sorted[sorted.length - 1] * 10) / 10,
     count: gaps.length,
   };
 }
@@ -298,8 +304,8 @@ function calculateSpeedToLead(allDateMessages, ghlUserId, date, shiftHours) {
     const gapMs = new Date(firstResponse.dateAdded) - new Date(firstToday.dateAdded);
     const gapMinutes = gapMs / 60000;
 
-    // Ignore gaps > 480 min (8 hours) as likely not same-context
-    if (gapMinutes > 480 || gapMinutes < 0) continue;
+    // Cap at 60 min — longer gaps are likely existing conversations, not fresh leads
+    if (gapMinutes > 60 || gapMinutes < 0) continue;
 
     allGaps.push(gapMinutes);
 
@@ -314,11 +320,11 @@ function calculateSpeedToLead(allDateMessages, ghlUserId, date, shiftHours) {
 
   const overall = summarizeGaps(allGaps);
 
-  // Map to enum bucket
+  // Map to enum bucket (based on median)
   let bucket;
-  if (overall.avg_minutes < 5) bucket = 'under_5';
-  else if (overall.avg_minutes < 10) bucket = '5_to_10';
-  else if (overall.avg_minutes < 15) bucket = '10_to_15';
+  if (overall.median_minutes < 5) bucket = 'under_5';
+  else if (overall.median_minutes < 10) bucket = '5_to_10';
+  else if (overall.median_minutes < 15) bucket = '10_to_15';
   else bucket = 'over_15';
 
   // Build per-channel breakdown (only include channels with data)
@@ -329,6 +335,7 @@ function calculateSpeedToLead(allDateMessages, ghlUserId, date, shiftHours) {
   }
 
   return {
+    median_minutes: overall.median_minutes,
     avg_minutes: overall.avg_minutes,
     min_minutes: overall.min_minutes,
     max_minutes: overall.max_minutes,
@@ -576,7 +583,7 @@ export default async function handler(req, res) {
     // Speed-to-lead
     if (speedToLead) {
       fields.speed_to_lead = speedToLead.bucket;
-      fields.speed_to_lead_minutes = speedToLead.avg_minutes;
+      fields.speed_to_lead_minutes = speedToLead.median_minutes;
       fields.speed_to_lead_conversations = speedToLead.conversations_counted;
       sources.speed_to_lead = 'ghl_calculated';
       sources.speed_to_lead_minutes = 'ghl_calculated';
