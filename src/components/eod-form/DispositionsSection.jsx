@@ -4,7 +4,8 @@ import { Label, NumberInput } from '../shared/FormField'
 import { DISPOSITION_TYPES } from '../../lib/constants'
 import { getPerformanceTier } from '../../lib/kpi-calculations'
 
-export default function DispositionsSection({ formData, setField }) {
+export default function DispositionsSection({ formData, setField, ghl }) {
+  const getSource = ghl?.getFieldSource || (() => null)
   const totalDispositions = DISPOSITION_TYPES.reduce(
     (sum, d) => sum + (formData[d.key] || 0), 0
   )
@@ -13,12 +14,12 @@ export default function DispositionsSection({ formData, setField }) {
   const tier = getPerformanceTier(formData.daily_booking_rate)
 
   return (
-    <FormCard title="Call Dispositions" subtitle="Section 4 of 13 — Track every call outcome" icon={BarChart3}>
+    <FormCard title="Call Dispositions" subtitle="Section 4 of 13 — From GHL Pipeline" icon={BarChart3}>
       <div className="space-y-4">
         {DISPOSITION_TYPES.map((disp) => (
           <div key={disp.key} className="flex items-center gap-4">
             <div className="flex-1">
-              <Label className="mb-0">{disp.label}</Label>
+              <Label source={getSource(disp.key)} className="mb-0">{disp.label}</Label>
               <p className="text-xs text-slate-500">{disp.definition}</p>
             </div>
             <div className="w-20">
@@ -74,6 +75,9 @@ export default function DispositionsSection({ formData, setField }) {
               Standard: 60%+ | Elite: 70%+
             </span>
           </div>
+          <p className="text-[11px] text-slate-500 mt-2">
+            Rate = Booked / (Booked + Quoted + Follow-up + Lost). Non-qualified leads excluded.
+          </p>
         </div>
       </div>
 

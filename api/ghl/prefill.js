@@ -10,22 +10,22 @@ function toHawaiiDate(isoStr) {
   return d.toLocaleDateString('en-CA', { timeZone: 'Pacific/Honolulu' });
 }
 
-// Fetch individual call messages from GHL messages export API
-// Paginates backward through all messages until we pass the target date
-async function fetchCallMessages(ghlUserId, date) {
+// Fetch ALL messages from GHL messages export API for a target date
+// Returns calls, SMS, FB, IG messages in categorized buckets
+async function fetchAllMessages(ghlUserId, date) {
   const apiKey = process.env.GHL_API_KEY;
   const locationId = process.env.GHL_LOCATION_ID;
-  if (!apiKey || !locationId || !ghlUserId) return { userCalls: [], totalInbound: 0 };
+  if (!apiKey || !locationId || !ghlUserId) {
+    return { userCalls: [], totalInbound: 0, allDateMessages: [] };
+  }
 
   const userCalls = [];
   let totalInbound = 0;
+  const allDateMessages = []; // All messages on the target date for STL calc
   let cursor = null;
 
   for (let page = 0; page < 20; page++) {
-    const params = new URLSearchParams({
-      locationId,
-      limit: '100',
-    });
+    const params = new URLSearchParams({ locationId, limit: '100' });
     if (cursor) params.set('cursor', cursor);
 
     try {
@@ -46,33 +46,39 @@ async function fetchCallMessages(ghlUserId, date) {
 
       let foundOlder = false;
       for (const msg of messages) {
-        // type 1 = TYPE_CALL (direct calls, usually outbound with userId)
-        // type 24 = TYPE_IVR_CALL (IVR-routed calls, usually inbound, no userId)
-        if (msg.type !== 1 && msg.type !== 24) continue;
-
         const msgDate = toHawaiiDate(msg.dateAdded);
         if (!msgDate) continue;
 
         if (msgDate === date) {
           const direction = (msg.direction || '').toLowerCase();
           const userId = msg.userId || null;
-          const duration = msg.meta?.call?.duration || 0;
-          const status = msg.meta?.call?.status || '';
+          const msgType = msg.type;
 
-          // Count total location inbound (IVR calls can't be attributed to a CSR)
-          if (direction === 'inbound') {
-            totalInbound++;
-          }
+          // Collect ALL messages on this date for speed-to-lead and messaging metrics
+          allDateMessages.push({
+            type: msgType,
+            direction,
+            userId,
+            dateAdded: msg.dateAdded,
+            conversationId: msg.conversationId,
+            contactId: msg.contactId,
+            status: msg.meta?.call?.status || msg.status || '',
+            duration: msg.meta?.call?.duration || 0,
+          });
 
-          // Count calls attributed to this CSR (outbound have userId, IVR inbound don't)
-          if (userId === ghlUserId) {
-            userCalls.push({
-              direction,
-              duration,
-              status,
-              dateAdded: msg.dateAdded,
-              contactId: msg.contactId,
-            });
+          // Call-specific tracking (type 1 = direct call, type 24 = IVR call)
+          if (msgType === 1 || msgType === 24) {
+            if (direction === 'inbound') totalInbound++;
+
+            if (userId === ghlUserId) {
+              userCalls.push({
+                direction,
+                duration: msg.meta?.call?.duration || 0,
+                status: msg.meta?.call?.status || '',
+                dateAdded: msg.dateAdded,
+                contactId: msg.contactId,
+              });
+            }
           }
         } else if (msgDate && msgDate < date) {
           foundOlder = true;
@@ -81,7 +87,6 @@ async function fetchCallMessages(ghlUserId, date) {
       }
 
       if (foundOlder) break;
-
       cursor = data.nextCursor;
       if (!cursor || messages.length < 100) break;
     } catch (err) {
@@ -90,37 +95,194 @@ async function fetchCallMessages(ghlUserId, date) {
     }
   }
 
-  return { userCalls, totalInbound };
+  return { userCalls, totalInbound, allDateMessages };
+}
+
+// Fetch conversation IDs assigned to a specific GHL user
+async function fetchAssignedConversationIds(ghlUserId) {
+  const apiKey = process.env.GHL_API_KEY;
+  const locationId = process.env.GHL_LOCATION_ID;
+  if (!apiKey || !locationId || !ghlUserId) return new Set();
+
+  const ids = new Set();
+  try {
+    // Fetch up to 100 assigned conversations
+    const params = new URLSearchParams({
+      locationId,
+      assignedTo: ghlUserId,
+      limit: '100',
+    });
+
+    const response = await fetch(
+      `${GHL_API_BASE}/conversations/search?${params}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Version': '2021-07-28',
+        },
+      }
+    );
+
+    if (!response.ok) return ids;
+    const data = await response.json();
+    for (const conv of (data.conversations || [])) {
+      ids.add(conv.id);
+    }
+  } catch (err) {
+    console.error('GHL conversations search error:', err);
+  }
+  return ids;
 }
 
 // Analyze call messages for a specific CSR
-function analyzeCallMessages(userCalls, totalLocationInbound) {
-  let inbound = 0;
+// Uses dual attribution for inbound IVR calls (which have no userId):
+// 1. Conversation activity: CSR had outbound activity in that conversation
+// 2. Conversation assignment: conversation is assigned to the CSR in GHL
+function analyzeCallMessages(userCalls, totalLocationInbound, allDateMessages, ghlUserId, assignedConversationIds) {
   let outbound = 0;
-  let missed = 0;
 
+  // Count outbound calls directly attributed to this user
   for (const call of userCalls) {
-    if (call.direction === 'inbound') {
-      inbound++;
-      // A missed call has very short duration (< 5 seconds) or no-answer status
-      if (call.duration < 5 || call.status === 'no-answer' || call.status === 'busy') {
-        missed++;
-      }
-    } else if (call.direction === 'outbound') {
+    if (call.direction === 'outbound') {
       outbound++;
     }
   }
 
+  // Build set of conversations where this CSR had outbound activity today
+  const activeConversations = new Set();
+  for (const msg of allDateMessages) {
+    if (msg.direction === 'outbound' && msg.userId === ghlUserId && msg.conversationId) {
+      activeConversations.add(msg.conversationId);
+    }
+  }
+
+  let inbound = 0;
+  let missed = 0;
+  const countedInbound = new Set();
+
+  for (const msg of allDateMessages) {
+    if ((msg.type === 1 || msg.type === 24) && msg.direction === 'inbound') {
+      const convId = msg.conversationId;
+      // Attribute to CSR if they had activity in this conversation OR it's assigned to them
+      if (activeConversations.has(convId) || assignedConversationIds.has(convId)) {
+        const key = `${convId}-${msg.dateAdded}`;
+        if (!countedInbound.has(key)) {
+          countedInbound.add(key);
+          inbound++;
+          if (msg.duration < 5 || msg.status === 'no-answer' || msg.status === 'busy') {
+            missed++;
+          }
+        }
+      }
+    }
+  }
+
+  return { inbound, outbound, missed, total_location_inbound: totalLocationInbound };
+}
+
+// Analyze all messages for messaging metrics (SMS, FB, IG)
+function analyzeMessagingMetrics(allDateMessages, ghlUserId) {
+  const counts = {
+    total_sms_sent: 0,
+    total_sms_received: 0,
+    total_fb_messages_sent: 0,
+    total_fb_messages_received: 0,
+    total_ig_messages_sent: 0,
+    total_ig_messages_received: 0,
+  };
+
+  for (const msg of allDateMessages) {
+    const isOutbound = msg.direction === 'outbound';
+    const isInbound = msg.direction === 'inbound';
+    const isThisUser = msg.userId === ghlUserId;
+
+    switch (msg.type) {
+      case 2: // TYPE_SMS
+        if (isOutbound && isThisUser) counts.total_sms_sent++;
+        if (isInbound) counts.total_sms_received++;
+        break;
+      case 11: // TYPE_FACEBOOK
+        if (isOutbound && isThisUser) counts.total_fb_messages_sent++;
+        if (isInbound) counts.total_fb_messages_received++;
+        break;
+      case 18: // TYPE_INSTAGRAM
+        if (isOutbound && isThisUser) counts.total_ig_messages_sent++;
+        if (isInbound) counts.total_ig_messages_received++;
+        break;
+    }
+  }
+
+  counts.total_messages_sent = counts.total_sms_sent + counts.total_fb_messages_sent + counts.total_ig_messages_sent;
+  counts.total_messages_received = counts.total_sms_received + counts.total_fb_messages_received + counts.total_ig_messages_received;
+
+  return counts;
+}
+
+// Calculate speed-to-lead from message data
+// Groups by conversation, finds first inbound → first outbound response gap
+function calculateSpeedToLead(allDateMessages, ghlUserId) {
+  // Group messages by conversationId
+  const convos = {};
+  for (const msg of allDateMessages) {
+    if (!msg.conversationId) continue;
+    if (!convos[msg.conversationId]) convos[msg.conversationId] = [];
+    convos[msg.conversationId].push(msg);
+  }
+
+  const gaps = [];
+
+  for (const messages of Object.values(convos)) {
+    // Sort by dateAdded ascending
+    messages.sort((a, b) => new Date(a.dateAdded) - new Date(b.dateAdded));
+
+    const firstToday = messages[0];
+    if (!firstToday) continue;
+
+    // Only count conversations where first message today is inbound (new lead reaching out)
+    if (firstToday.direction !== 'inbound') continue;
+
+    // Find first outbound response by this CSR
+    const firstResponse = messages.find(m =>
+      m.direction === 'outbound' &&
+      m.userId === ghlUserId &&
+      new Date(m.dateAdded) > new Date(firstToday.dateAdded)
+    );
+
+    if (!firstResponse) continue;
+
+    const gapMs = new Date(firstResponse.dateAdded) - new Date(firstToday.dateAdded);
+    const gapMinutes = gapMs / 60000;
+
+    // Ignore gaps > 480 min (8 hours) as likely not same-context
+    if (gapMinutes > 480 || gapMinutes < 0) continue;
+
+    gaps.push(gapMinutes);
+  }
+
+  if (gaps.length === 0) return null;
+
+  const avg = gaps.reduce((s, g) => s + g, 0) / gaps.length;
+  const min = Math.min(...gaps);
+  const max = Math.max(...gaps);
+
+  // Map to enum bucket
+  let bucket;
+  if (avg < 5) bucket = 'under_5';
+  else if (avg < 10) bucket = '5_to_10';
+  else if (avg < 15) bucket = '10_to_15';
+  else bucket = 'over_15';
+
   return {
-    inbound,
-    outbound,
-    missed,
-    total_location_inbound: totalLocationInbound,
+    avg_minutes: Math.round(avg * 10) / 10,
+    min_minutes: Math.round(min * 10) / 10,
+    max_minutes: Math.round(max * 10) / 10,
+    conversations_counted: gaps.length,
+    bucket,
   };
 }
 
 // Fetch opportunities assigned to a user
-async function fetchGhlOpportunities(userId, date) {
+async function fetchGhlOpportunities(userId) {
   const apiKey = process.env.GHL_API_KEY;
   const locationId = process.env.GHL_LOCATION_ID;
   if (!apiKey || !locationId) return [];
@@ -184,10 +346,15 @@ async function fetchPipelineStages() {
   }
 }
 
-// Analyze opportunities for pipeline metrics
+// Analyze opportunities for pipeline metrics and auto-fill dispositions
+// Only opportunities that changed stage TODAY are counted as dispositions
+// Non-qualified leads are tracked separately and excluded from booking rate
 function analyzeOpportunities(opportunities, stageMap, date) {
   const booked = [];
   const lost = [];
+  const quoted = [];
+  const followup = [];
+  const notQualified = [];
   const newLeads = [];
   const allOpps = [];
 
@@ -207,12 +374,32 @@ function analyzeOpportunities(opportunities, stageMap, date) {
     };
 
     if (lastChange === date) {
+      // Booked: JR Booked, DR Booked, Booked, Closed Won, etc.
       if (stageL.includes('book') || stageL.includes('schedul') || stageL.includes('won')
           || stageL.includes('approved') || stageL.includes('submitted')) {
         booked.push(entry);
       }
-      if (stageL.includes('lost') || stageL.includes('declined') || stageL.includes('cancel')) {
+      // Lost: JR Lost, DR Lost, Closed Lost, etc.
+      else if (stageL.includes('lost') || stageL.includes('declined') || stageL.includes('cancel')) {
         lost.push(entry);
+      }
+      // Non-qualified: explicitly not a real lead
+      else if (stageL.includes('non-qualified') || stageL.includes('not qualified') || stageL.includes('unqualified')) {
+        notQualified.push(entry);
+      }
+      // Quoted: received pricing but hasn't committed
+      else if (stageL.includes('quot') || stageL.includes('estimate') || stageL.includes('proposal')
+               || stageL.includes('agreement sent') || stageL.includes('rental agreement')) {
+        quoted.push(entry);
+      }
+      // Follow-up: interested, needs callback or nurture
+      else if (stageL.includes('contacted') || stageL.includes('conversation')
+               || stageL.includes('nurture') || stageL.includes('follow')) {
+        followup.push(entry);
+      }
+      // Anything else that changed today but doesn't fit above = follow-up
+      else if (!stageL.includes('new lead') && !stageL.includes('new')) {
+        followup.push(entry);
       }
     }
 
@@ -229,6 +416,13 @@ function analyzeOpportunities(opportunities, stageMap, date) {
     new_leads_count: newLeads.length,
     total: allOpps.length,
     opportunities: booked,
+    dispositions: {
+      disp_booked: booked.length,
+      disp_quoted: quoted.length,
+      disp_followup_required: followup.length,
+      disp_not_qualified: notQualified.length,
+      disp_lost: lost.length,
+    },
   };
 }
 
@@ -271,42 +465,84 @@ export default async function handler(req, res) {
 
     const ghlUserId = mapping.ghl_user_id;
 
-    // Fetch call messages and opportunities in parallel
-    const [callData, opportunities, stageMap] = await Promise.all([
-      fetchCallMessages(ghlUserId, date),
-      fetchGhlOpportunities(ghlUserId, date),
+    // Fetch all messages, opportunities, and assigned conversations in parallel
+    const [messageData, opportunities, stageMap, assignedConvIds] = await Promise.all([
+      fetchAllMessages(ghlUserId, date),
+      fetchGhlOpportunities(ghlUserId),
       fetchPipelineStages(),
+      fetchAssignedConversationIds(ghlUserId),
     ]);
 
     // Analyze the data
-    const callMetrics = analyzeCallMessages(callData.userCalls, callData.totalInbound);
+    const callMetrics = analyzeCallMessages(messageData.userCalls, messageData.totalInbound, messageData.allDateMessages, ghlUserId, assignedConvIds);
+    const messagingMetrics = analyzeMessagingMetrics(messageData.allDateMessages, ghlUserId);
+    const speedToLead = calculateSpeedToLead(messageData.allDateMessages, ghlUserId);
     const pipelineData = analyzeOpportunities(opportunities, stageMap, date);
 
     // Build prefill fields
     const fields = {};
     const sources = {};
 
-    // Auto-fill outbound calls (accurately attributed per-CSR via userId)
+    // Call metrics
     fields.total_outbound_calls = callMetrics.outbound;
     sources.total_outbound_calls = 'ghl_calls';
 
-    // Inbound calls from IVR can't be attributed to a specific CSR,
-    // so we auto-fill with the CSR's attributed inbound count (if any)
-    // and provide total location inbound as context
-    fields.total_inbound_calls = callMetrics.inbound;
-    sources.total_inbound_calls = 'ghl_calls';
+    // Inbound calls: use location-wide total because GHL IVR calls
+    // don't have userId attribution (no way to know who answered)
+    fields.total_inbound_calls = callMetrics.total_location_inbound;
+    sources.total_inbound_calls = 'ghl_location';
 
-    // Missed calls from attributed inbound
     fields.missed_calls = callMetrics.missed;
     sources.missed_calls = 'ghl_calls';
 
-    // Auto-calc missed call rate if we have inbound data
-    if (callMetrics.inbound > 0) {
+    if (callMetrics.total_location_inbound > 0) {
       fields.missed_call_rate = Math.round(
-        (callMetrics.missed / callMetrics.inbound) * 100 * 10
+        (callMetrics.missed / callMetrics.total_location_inbound) * 100 * 10
       ) / 10;
       sources.missed_call_rate = 'ghl_calls';
     }
+
+    // Messaging metrics (new)
+    fields.total_sms_sent = messagingMetrics.total_sms_sent;
+    fields.total_sms_received = messagingMetrics.total_sms_received;
+    fields.total_fb_messages_sent = messagingMetrics.total_fb_messages_sent;
+    fields.total_fb_messages_received = messagingMetrics.total_fb_messages_received;
+    fields.total_ig_messages_sent = messagingMetrics.total_ig_messages_sent;
+    fields.total_ig_messages_received = messagingMetrics.total_ig_messages_received;
+    fields.total_messages_sent = messagingMetrics.total_messages_sent;
+    fields.total_messages_received = messagingMetrics.total_messages_received;
+    sources.total_sms_sent = 'ghl_messages';
+    sources.total_sms_received = 'ghl_messages';
+    sources.total_fb_messages_sent = 'ghl_messages';
+    sources.total_fb_messages_received = 'ghl_messages';
+    sources.total_ig_messages_sent = 'ghl_messages';
+    sources.total_ig_messages_received = 'ghl_messages';
+    sources.total_messages_sent = 'ghl_messages';
+    sources.total_messages_received = 'ghl_messages';
+
+    // Speed-to-lead
+    if (speedToLead) {
+      fields.speed_to_lead = speedToLead.bucket;
+      fields.speed_to_lead_minutes = speedToLead.avg_minutes;
+      fields.speed_to_lead_conversations = speedToLead.conversations_counted;
+      sources.speed_to_lead = 'ghl_calculated';
+      sources.speed_to_lead_minutes = 'ghl_calculated';
+    }
+
+    // Dispositions — auto-fill from GHL pipeline stage changes
+    // Only qualified leads (booked, quoted, followup, lost) are included in booking rate
+    // Non-qualified leads are tracked but excluded from the rate denominator
+    const disps = pipelineData.dispositions;
+    fields.disp_booked = disps.disp_booked;
+    fields.disp_quoted = disps.disp_quoted;
+    fields.disp_followup_required = disps.disp_followup_required;
+    fields.disp_not_qualified = disps.disp_not_qualified;
+    fields.disp_lost = disps.disp_lost;
+    sources.disp_booked = 'ghl_pipeline';
+    sources.disp_quoted = 'ghl_pipeline';
+    sources.disp_followup_required = 'ghl_pipeline';
+    sources.disp_not_qualified = 'ghl_pipeline';
+    sources.disp_lost = 'ghl_pipeline';
 
     return res.status(200).json({
       fields,
@@ -317,10 +553,12 @@ export default async function handler(req, res) {
         total: pipelineData.total,
         opportunities: pipelineData.opportunities,
       },
+      speed_to_lead_detail: speedToLead,
       _sources: sources,
       _counts: {
-        user_calls: callData.userCalls.length,
-        total_location_inbound: callData.totalInbound,
+        user_calls: messageData.userCalls.length,
+        total_location_inbound: messageData.totalInbound,
+        all_messages_today: messageData.allDateMessages.length,
         opportunities: opportunities.length,
       },
       _computed_at: new Date().toISOString(),

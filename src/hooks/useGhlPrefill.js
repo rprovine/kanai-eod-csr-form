@@ -8,6 +8,20 @@ const GHL_PREFILL_FIELDS = new Set([
   'missed_calls',
   'missed_call_rate',
   'speed_to_lead',
+  'speed_to_lead_minutes',
+  'total_sms_sent',
+  'total_sms_received',
+  'total_fb_messages_sent',
+  'total_fb_messages_received',
+  'total_ig_messages_sent',
+  'total_ig_messages_received',
+  'total_messages_sent',
+  'total_messages_received',
+  'disp_booked',
+  'disp_quoted',
+  'disp_followup_required',
+  'disp_not_qualified',
+  'disp_lost',
 ])
 
 export function useGhlPrefill(setFields) {
@@ -17,6 +31,7 @@ export function useGhlPrefill(setFields) {
   const [ghlValues, setGhlValues] = useState({}) // original GHL values for discrepancy detection
   const [pipelineData, setPipelineData] = useState(null)
   const [locationInbound, setLocationInbound] = useState(null)
+  const [speedToLeadDetail, setSpeedToLeadDetail] = useState(null)
   const lastFetchRef = useRef(null)
 
   // Load GHL data and prefill form fields
@@ -53,6 +68,10 @@ export function useGhlPrefill(setFields) {
 
       if (prefillResult?._counts?.total_location_inbound != null) {
         setLocationInbound(prefillResult._counts.total_location_inbound)
+      }
+
+      if (prefillResult?.speed_to_lead_detail) {
+        setSpeedToLeadDetail(prefillResult.speed_to_lead_detail)
       }
 
       if (pipelineResult?.pipeline) {
@@ -115,6 +134,7 @@ export function useGhlPrefill(setFields) {
     fieldSources,
     pipelineData,
     locationInbound,
+    speedToLeadDetail,
     ghlValues,
     loadGhlData,
     refreshGhlData,

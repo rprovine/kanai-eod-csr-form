@@ -25,7 +25,17 @@ function StatusBadge({ status, children }) {
 
 export default function KPIDashboardSection({ formData }) {
   const kpis = calcAllKPIs(formData)
-  const speedLabel = SPEED_TO_LEAD_OPTIONS.find((o) => o.value === kpis.speedToLead)?.label || 'Not set'
+
+  // Speed-to-lead: prefer numeric GHL value, fall back to dropdown label
+  let stlDisplay, stlStatus
+  if (kpis.speedToLeadMinutes != null && kpis.speedToLeadMinutes > 0) {
+    stlDisplay = `${kpis.speedToLeadMinutes} min`
+    stlStatus = kpis.speedToLeadMinutes < 5 ? 'green' : kpis.speedToLeadMinutes < 10 ? 'yellow' : 'red'
+  } else {
+    const speedLabel = SPEED_TO_LEAD_OPTIONS.find((o) => o.value === kpis.speedToLead)?.label || 'Not set'
+    stlDisplay = speedLabel
+    stlStatus = kpis.speedToLead === 'under_5' ? 'green' : kpis.speedToLead === '5_to_10' ? 'yellow' : 'red'
+  }
 
   const kpiRows = [
     {
@@ -51,10 +61,10 @@ export default function KPIDashboardSection({ formData }) {
     },
     {
       label: 'Speed-to-Lead',
-      value: kpis.speedToLead === 'under_5' ? 100 : 0,
-      display: speedLabel,
+      value: kpis.speedToLeadMinutes != null && kpis.speedToLeadMinutes > 0 ? kpis.speedToLeadMinutes : (kpis.speedToLead === 'under_5' ? 100 : 0),
+      display: stlDisplay,
       target: 'Under 5 min',
-      status: kpis.speedToLead === 'under_5' ? 'green' : kpis.speedToLead === '5_to_10' ? 'yellow' : 'red',
+      status: stlStatus,
     },
     {
       label: 'Disposition Logging Rate',

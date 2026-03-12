@@ -70,11 +70,19 @@ export function calcAllKPIs(formData) {
     formData.pipeline_quoted_followup_scheduled &&
     formData.pipeline_stages_match
 
+  // Speed-to-lead: prefer numeric GHL value, fall back to dropdown enum
+  let speedToLeadMet = false
+  if (formData.speed_to_lead_minutes != null && formData.speed_to_lead_minutes > 0) {
+    speedToLeadMet = formData.speed_to_lead_minutes < 5
+  } else {
+    speedToLeadMet = formData.speed_to_lead === 'under_5'
+  }
+
   // Activity minimums
   const activityMinimums = {
     qualifiedCalls: qualifiedCalls >= 20,
     dispositionRate: dispositionRate >= 95,
-    speedToLead: formData.speed_to_lead === 'under_5',
+    speedToLead: speedToLeadMet,
     followupCompletion: followupCompletion >= 100,
     missedCallRate: missedCallRate < 10,
   }
@@ -86,6 +94,7 @@ export function calcAllKPIs(formData) {
     bookingRate: Math.round(bookingRate * 10) / 10,
     missedCallRate: Math.round(missedCallRate * 10) / 10,
     speedToLead: formData.speed_to_lead,
+    speedToLeadMinutes: formData.speed_to_lead_minutes,
     dispositionRate: Math.round(dispositionRate * 10) / 10,
     followupCompletion: Math.round(followupCompletion * 10) / 10,
     pipelineClean,

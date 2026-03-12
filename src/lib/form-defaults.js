@@ -19,14 +19,24 @@ export function getDefaultFormState() {
     comms_web_forms: false,
     comms_docket: false,
 
-    // Section 3: Call Metrics
+    // Section 3: Call & Messaging Metrics
     total_inbound_calls: 0,
     total_outbound_calls: 0,
     total_qualified_calls: 0,
     missed_calls: 0,
     missed_call_rate: 0,
     speed_to_lead: '',
+    speed_to_lead_minutes: null,
+    speed_to_lead_conversations: 0,
     disposition_logging_rate: 0,
+    total_sms_sent: 0,
+    total_sms_received: 0,
+    total_fb_messages_sent: 0,
+    total_fb_messages_received: 0,
+    total_ig_messages_sent: 0,
+    total_ig_messages_received: 0,
+    total_messages_sent: 0,
+    total_messages_received: 0,
 
     // Section 4: Dispositions
     disp_booked: 0,

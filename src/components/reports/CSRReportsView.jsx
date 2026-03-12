@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Calendar, Download, Users, Phone, TrendingUp, Target, CheckCircle2, XCircle, Loader2, Trophy } from 'lucide-react'
+import { Calendar, Download, Users, Phone, TrendingUp, Target, CheckCircle2, XCircle, Loader2, Trophy, MessageSquare, Clock } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
 import { TABLES } from '../../lib/constants'
 import { calcBookingRate, calcMissedCallRate, getPerformanceTier } from '../../lib/kpi-calculations'
@@ -112,10 +112,20 @@ export default function CSRReportsView() {
     acc.followup += parseInt(r.disp_followup_required) || 0
     acc.lost += parseInt(r.disp_lost) || 0
     acc.jobsBooked += r.jobCount
+    acc.smsSent += parseInt(r.total_sms_sent) || 0
+    acc.smsReceived += parseInt(r.total_sms_received) || 0
+    acc.msgsSent += parseInt(r.total_messages_sent) || 0
+    acc.msgsReceived += parseInt(r.total_messages_received) || 0
+    if (r.speed_to_lead_minutes != null && r.speed_to_lead_minutes > 0) {
+      acc.stlSum += r.speed_to_lead_minutes
+      acc.stlCount++
+    }
     return acc
   }, {
     inbound: 0, outbound: 0, qualified: 0, missed: 0,
     booked: 0, quoted: 0, followup: 0, lost: 0, jobsBooked: 0,
+    smsSent: 0, smsReceived: 0, msgsSent: 0, msgsReceived: 0,
+    stlSum: 0, stlCount: 0,
   })
 
   const avgBookingRate = enrichedReports.length > 0
@@ -124,6 +134,9 @@ export default function CSRReportsView() {
   const avgMissedRate = enrichedReports.length > 0
     ? Math.round(enrichedReports.reduce((sum, r) => sum + r.missedCallRate, 0) / enrichedReports.length * 10) / 10
     : 0
+  const avgStl = totals.stlCount > 0
+    ? Math.round(totals.stlSum / totals.stlCount * 10) / 10
+    : null
 
   // Per-CSR performance breakdown
   const csrPerformance = Object.values(
@@ -147,25 +160,44 @@ export default function CSRReportsView() {
 
   // Export CSV
   const exportCSV = () => {
-    const headers = ['Date', 'CSR', 'Inbound', 'Outbound', 'Qualified', 'Booked', 'Quoted', 'Follow-up', 'Lost', 'Booking Rate', 'Missed Rate', 'Jobs Booked']
+    const headers = [
+      'Date', 'CSR', 'Inbound', 'Outbound', 'Qualified', 'Missed',
+      'SMS Sent', 'SMS Received', 'FB Sent', 'FB Received', 'IG Sent', 'IG Received',
+      'Total Msgs Sent', 'Total Msgs Received',
+      'Booked', 'Quoted', 'Follow-up', 'Lost',
+      'Booking Rate', 'Missed Rate', 'Speed-to-Lead (min)', 'Jobs Booked',
+    ]
     const rows = enrichedReports.map(r => [
       r.report_date,
       r.csrName,
       r.total_inbound_calls || 0,
       r.total_outbound_calls || 0,
       r.total_qualified_calls || 0,
+      r.missed_calls || 0,
+      r.total_sms_sent || 0,
+      r.total_sms_received || 0,
+      r.total_fb_messages_sent || 0,
+      r.total_fb_messages_received || 0,
+      r.total_ig_messages_sent || 0,
+      r.total_ig_messages_received || 0,
+      r.total_messages_sent || 0,
+      r.total_messages_received || 0,
       r.disp_booked || 0,
       r.disp_quoted || 0,
       r.disp_followup_required || 0,
       r.disp_lost || 0,
       r.bookingRate + '%',
       r.missedCallRate + '%',
+      r.speed_to_lead_minutes != null ? r.speed_to_lead_minutes : '',
       r.jobCount,
     ])
     rows.push([
-      'TOTAL', '', totals.inbound, totals.outbound, totals.qualified,
+      'TOTAL', '', totals.inbound, totals.outbound, totals.qualified, totals.missed,
+      totals.smsSent, totals.smsReceived, '', '', '', '',
+      totals.msgsSent, totals.msgsReceived,
       totals.booked, totals.quoted, totals.followup, totals.lost,
-      avgBookingRate + '%', avgMissedRate + '%', totals.jobsBooked,
+      avgBookingRate + '%', avgMissedRate + '%', avgStl != null ? avgStl : '',
+      totals.jobsBooked,
     ])
     const csv = [headers, ...rows].map(row => row.join(',')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
@@ -280,7 +312,7 @@ export default function CSRReportsView() {
       {/* Summary Cards */}
       {!isLoading && reports.length > 0 && (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             <div className="p-4 rounded-xl bg-gradient-to-br from-blue-600 to-blue-800 text-white">
               <div className="flex items-center gap-2 mb-2">
                 <Phone className="w-4 h-4 opacity-80" />
@@ -316,6 +348,24 @@ export default function CSRReportsView() {
               <div className="text-2xl font-bold">{avgMissedRate}%</div>
               <div className="text-xs opacity-60 mt-1">Target: Under 10%</div>
             </div>
+
+            <div className="p-4 rounded-xl bg-gradient-to-br from-cyan-600 to-cyan-800 text-white">
+              <div className="flex items-center gap-2 mb-2">
+                <MessageSquare className="w-4 h-4 opacity-80" />
+                <span className="text-xs font-medium opacity-80">Messages</span>
+              </div>
+              <div className="text-2xl font-bold">{totals.msgsSent + totals.msgsReceived}</div>
+              <div className="text-xs opacity-60 mt-1">{totals.msgsSent} sent / {totals.msgsReceived} recv</div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-gradient-to-br from-indigo-600 to-indigo-800 text-white">
+              <div className="flex items-center gap-2 mb-2">
+                <Clock className="w-4 h-4 opacity-80" />
+                <span className="text-xs font-medium opacity-80">Avg Speed-to-Lead</span>
+              </div>
+              <div className="text-2xl font-bold">{avgStl != null ? `${avgStl}m` : '—'}</div>
+              <div className="text-xs opacity-60 mt-1">Target: Under 5 min</div>
+            </div>
           </div>
 
           {/* Data Table */}
@@ -329,36 +379,54 @@ export default function CSRReportsView() {
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">In</th>
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">Out</th>
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">Qual</th>
+                    <th className="text-center py-3 px-3 text-slate-400 font-medium">SMS</th>
+                    <th className="text-center py-3 px-3 text-slate-400 font-medium">Msgs</th>
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">Booked</th>
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">Book %</th>
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">Miss %</th>
+                    <th className="text-center py-3 px-3 text-slate-400 font-medium">STL</th>
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">Bonus</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {enrichedReports.map(r => (
-                    <tr key={r.id} className="border-b border-card-border/50 hover:bg-slate-800/30 transition-colors">
-                      <td className="py-3 px-4 text-slate-300">{formatDisplayDate(r.report_date)}</td>
-                      <td className="py-3 px-4 text-slate-200 font-medium">{r.csrName}</td>
-                      <td className="py-3 px-3 text-center text-slate-300">{r.total_inbound_calls || 0}</td>
-                      <td className="py-3 px-3 text-center text-slate-300">{r.total_outbound_calls || 0}</td>
-                      <td className="py-3 px-3 text-center text-slate-100 font-semibold">{r.total_qualified_calls || 0}</td>
-                      <td className="py-3 px-3 text-center text-slate-100 font-semibold">{r.disp_booked || 0}</td>
-                      <td className="py-3 px-3 text-center">
-                        <span className={`font-semibold ${r.tier.color}`}>{r.bookingRate}%</span>
-                      </td>
-                      <td className="py-3 px-3 text-center">
-                        <span className={`font-semibold ${r.missedCallRate < 10 ? 'text-accent-green' : 'text-accent-red'}`}>
-                          {r.missedCallRate}%
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 text-center">
-                        {r.bookingRate >= 60
-                          ? <CheckCircle2 className="w-4 h-4 text-accent-green mx-auto" />
-                          : <XCircle className="w-4 h-4 text-accent-red mx-auto" />}
-                      </td>
-                    </tr>
-                  ))}
+                  {enrichedReports.map(r => {
+                    const smsTotal = (parseInt(r.total_sms_sent) || 0) + (parseInt(r.total_sms_received) || 0)
+                    const msgsTotal = (parseInt(r.total_messages_sent) || 0) + (parseInt(r.total_messages_received) || 0)
+                    const stlMin = r.speed_to_lead_minutes != null && r.speed_to_lead_minutes > 0 ? r.speed_to_lead_minutes : null
+
+                    return (
+                      <tr key={r.id} className="border-b border-card-border/50 hover:bg-slate-800/30 transition-colors">
+                        <td className="py-3 px-4 text-slate-300">{formatDisplayDate(r.report_date)}</td>
+                        <td className="py-3 px-4 text-slate-200 font-medium">{r.csrName}</td>
+                        <td className="py-3 px-3 text-center text-slate-300">{r.total_inbound_calls || 0}</td>
+                        <td className="py-3 px-3 text-center text-slate-300">{r.total_outbound_calls || 0}</td>
+                        <td className="py-3 px-3 text-center text-slate-100 font-semibold">{r.total_qualified_calls || 0}</td>
+                        <td className="py-3 px-3 text-center text-slate-300">{smsTotal || '—'}</td>
+                        <td className="py-3 px-3 text-center text-slate-300">{msgsTotal || '—'}</td>
+                        <td className="py-3 px-3 text-center text-slate-100 font-semibold">{r.disp_booked || 0}</td>
+                        <td className="py-3 px-3 text-center">
+                          <span className={`font-semibold ${r.tier.color}`}>{r.bookingRate}%</span>
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <span className={`font-semibold ${r.missedCallRate < 10 ? 'text-accent-green' : 'text-accent-red'}`}>
+                            {r.missedCallRate}%
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          {stlMin != null ? (
+                            <span className={`font-semibold ${stlMin < 5 ? 'text-accent-green' : stlMin < 10 ? 'text-accent-gold' : 'text-accent-red'}`}>
+                              {stlMin}m
+                            </span>
+                          ) : '—'}
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          {r.bookingRate >= 60
+                            ? <CheckCircle2 className="w-4 h-4 text-accent-green mx-auto" />
+                            : <XCircle className="w-4 h-4 text-accent-red mx-auto" />}
+                        </td>
+                      </tr>
+                    )
+                  })}
                   {/* Totals Row */}
                   <tr className="bg-slate-800/60 font-semibold">
                     <td className="py-3 px-4 text-slate-200">TOTAL</td>
@@ -366,9 +434,12 @@ export default function CSRReportsView() {
                     <td className="py-3 px-3 text-center text-slate-200">{totals.inbound}</td>
                     <td className="py-3 px-3 text-center text-slate-200">{totals.outbound}</td>
                     <td className="py-3 px-3 text-center text-slate-100">{totals.qualified}</td>
+                    <td className="py-3 px-3 text-center text-slate-200">{totals.smsSent + totals.smsReceived}</td>
+                    <td className="py-3 px-3 text-center text-slate-200">{totals.msgsSent + totals.msgsReceived}</td>
                     <td className="py-3 px-3 text-center text-slate-100">{totals.booked}</td>
                     <td className="py-3 px-3 text-center text-kanai-blue-light">{avgBookingRate}%</td>
                     <td className="py-3 px-3 text-center text-slate-200">{avgMissedRate}%</td>
+                    <td className="py-3 px-3 text-center text-slate-200">{avgStl != null ? `${avgStl}m` : '—'}</td>
                     <td className="py-3 px-3"></td>
                   </tr>
                 </tbody>

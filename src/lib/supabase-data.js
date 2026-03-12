@@ -50,7 +50,7 @@ export async function fetchReports({ startDate, endDate, employeeId } = {}) {
   return { reports, jobsBooked }
 }
 
-export async function saveEodReport(formData) {
+export async function saveEodReport(formData, { ghlSuggestions } = {}) {
   if (!isSupabaseConfigured()) {
     console.warn('Supabase not configured — report saved locally only')
     return { success: true, local: true }
@@ -59,12 +59,18 @@ export async function saveEodReport(formData) {
   // Separate main report fields from child records
   const { jobs_booked, email_submissions, yelp_leads, followups, ...reportFields } = formData
 
-  // Remove client-side-only fields
+  // Remove client-side-only computed fields
   delete reportFields.daily_booking_rate
   delete reportFields.disposition_logging_rate
   delete reportFields.missed_call_rate
   delete reportFields.total_hours
   delete reportFields.status
+
+  // Add GHL suggestion audit data if available
+  if (ghlSuggestions) {
+    reportFields.ghl_suggested_disp_booked = ghlSuggestions.disp_booked ?? null
+    reportFields.ghl_suggested_disp_lost = ghlSuggestions.disp_lost ?? null
+  }
 
   // Add server-side metadata
   const reportData = {

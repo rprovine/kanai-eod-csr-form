@@ -198,7 +198,7 @@ export default function App() {
       case 1: return <HeaderSection {...formProps} employees={employees} />
       case 2: return <CommunicationsSection {...formProps} />
       case 3: return <CallMetricsSection {...formProps} ghl={ghl} />
-      case 4: return <DispositionsSection {...formProps} />
+      case 4: return <DispositionsSection {...formProps} ghl={ghl} />
       case 5: return <JobsBookedSection {...formProps} />
       case 6: return <EmailSubmissionsSection {...formProps} />
       case 7: return <YelpLeadsSection {...formProps} />

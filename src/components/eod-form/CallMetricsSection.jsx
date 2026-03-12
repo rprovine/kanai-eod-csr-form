@@ -1,4 +1,5 @@
-import { Phone, AlertTriangle, RefreshCw, Loader2 } from 'lucide-react'
+import { useState } from 'react'
+import { Phone, AlertTriangle, RefreshCw, Loader2, MessageSquare, ChevronDown, ChevronUp, Clock } from 'lucide-react'
 import FormCard from '../shared/FormCard'
 import { Label, NumberInput, Select } from '../shared/FormField'
 import { SPEED_TO_LEAD_OPTIONS } from '../../lib/constants'
@@ -18,9 +19,14 @@ function DiscrepancyWarning({ discrepancy }) {
 export default function CallMetricsSection({ formData, setField, ghl }) {
   const getSource = ghl?.getFieldSource || (() => null)
   const getDiscrep = ghl?.getDiscrepancy || (() => null)
+  const [showMessaging, setShowMessaging] = useState(false)
+  const [stlOverride, setStlOverride] = useState(false)
+
+  const hasMessagingData = (formData.total_messages_sent || 0) + (formData.total_messages_received || 0) > 0
+  const hasStlData = formData.speed_to_lead_minutes != null && formData.speed_to_lead_minutes > 0
 
   return (
-    <FormCard title="Call Activity Metrics" subtitle="Section 3 of 13 — From GHL" icon={Phone}>
+    <FormCard title="Call & Messaging Activity" subtitle="Section 3 of 13 — From GHL" icon={Phone}>
       {ghl && (
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
@@ -49,6 +55,7 @@ export default function CallMetricsSection({ formData, setField, ghl }) {
         </div>
       )}
 
+      {/* Call Metrics */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div>
           <Label>Inbound Calls</Label>
@@ -91,19 +98,117 @@ export default function CallMetricsSection({ formData, setField, ghl }) {
         </div>
       </div>
 
+      {/* Messaging Activity (collapsible) */}
+      <div className="mt-4">
+        <button
+          type="button"
+          onClick={() => setShowMessaging(!showMessaging)}
+          className="flex items-center gap-2 text-sm font-medium text-slate-300 hover:text-slate-100 transition-colors w-full"
+        >
+          <MessageSquare className="w-4 h-4" />
+          Messaging Activity
+          {hasMessagingData && (
+            <span className="text-xs text-accent-green font-normal">
+              {formData.total_messages_sent} sent / {formData.total_messages_received} received
+            </span>
+          )}
+          {showMessaging ? <ChevronUp className="w-3.5 h-3.5 ml-auto" /> : <ChevronDown className="w-3.5 h-3.5 ml-auto" />}
+        </button>
+
+        {showMessaging && (
+          <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <div>
+              <Label source={getSource('total_sms_sent')}>SMS Sent</Label>
+              <NumberInput
+                value={formData.total_sms_sent}
+                onChange={(v) => setField('total_sms_sent', v)}
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <Label source={getSource('total_sms_received')}>SMS Received</Label>
+              <NumberInput
+                value={formData.total_sms_received}
+                onChange={(v) => setField('total_sms_received', v)}
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <Label source={getSource('total_fb_messages_sent')}>FB Sent</Label>
+              <NumberInput
+                value={formData.total_fb_messages_sent}
+                onChange={(v) => setField('total_fb_messages_sent', v)}
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <Label source={getSource('total_fb_messages_received')}>FB Received</Label>
+              <NumberInput
+                value={formData.total_fb_messages_received}
+                onChange={(v) => setField('total_fb_messages_received', v)}
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <Label source={getSource('total_ig_messages_sent')}>IG Sent</Label>
+              <NumberInput
+                value={formData.total_ig_messages_sent}
+                onChange={(v) => setField('total_ig_messages_sent', v)}
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <Label source={getSource('total_ig_messages_received')}>IG Received</Label>
+              <NumberInput
+                value={formData.total_ig_messages_received}
+                onChange={(v) => setField('total_ig_messages_received', v)}
+                placeholder="0"
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Speed-to-Lead + Missed Call Rate */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
         <div>
           <Label source={getSource('speed_to_lead')}>Average Speed-to-Lead</Label>
-          <Select
-            value={formData.speed_to_lead}
-            onChange={(e) => setField('speed_to_lead', e.target.value)}
-          >
-            <option value="">Select...</option>
-            {SPEED_TO_LEAD_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
-            ))}
-          </Select>
-          <p className="text-xs text-slate-500 mt-1">Target: Under 5 min</p>
+          {hasStlData && !stlOverride ? (
+            <>
+              <div className={`px-4 py-2.5 rounded-lg border text-sm font-semibold flex items-center gap-2 ${
+                formData.speed_to_lead_minutes < 5
+                  ? 'bg-accent-green/10 border-accent-green/30 text-accent-green'
+                  : formData.speed_to_lead_minutes < 10
+                  ? 'bg-accent-gold/10 border-accent-gold/30 text-accent-gold'
+                  : 'bg-accent-red/10 border-accent-red/30 text-accent-red'
+              }`}>
+                <Clock className="w-4 h-4" />
+                {formData.speed_to_lead_minutes} min avg
+              </div>
+              <p className="text-[11px] text-slate-500 mt-1">
+                Based on {formData.speed_to_lead_conversations} conversation{formData.speed_to_lead_conversations !== 1 ? 's' : ''}
+                {' '}<button type="button" onClick={() => setStlOverride(true)} className="text-kanai-blue-light hover:underline">Override</button>
+              </p>
+            </>
+          ) : (
+            <>
+              <Select
+                value={formData.speed_to_lead}
+                onChange={(e) => setField('speed_to_lead', e.target.value)}
+              >
+                <option value="">Select...</option>
+                {SPEED_TO_LEAD_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </Select>
+              <p className="text-xs text-slate-500 mt-1">
+                Target: Under 5 min
+                {hasStlData && stlOverride && (
+                  <>{' '}<button type="button" onClick={() => setStlOverride(false)} className="text-kanai-blue-light hover:underline">Use GHL value</button></>
+                )}
+              </p>
+            </>
+          )}
         </div>
 
         <div>
