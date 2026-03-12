@@ -84,13 +84,13 @@ export default function CallMetricsSection({ formData, setField, ghl }) {
           />
         </div>
         <div>
-          <Label source={getSource('missed_calls')}>Missed Calls</Label>
+          <Label>Missed Calls</Label>
           <NumberInput
             value={formData.missed_calls}
             onChange={(v) => setField('missed_calls', v)}
             placeholder="0"
           />
-          <DiscrepancyWarning discrepancy={getDiscrep('missed_calls', formData.missed_calls)} />
+          <p className="text-[11px] text-slate-500 mt-1">Manual entry</p>
         </div>
       </div>
 
@@ -208,7 +208,7 @@ export default function CallMetricsSection({ formData, setField, ghl }) {
         </div>
 
         <div>
-          <Label source={getSource('missed_call_rate')}>Missed Call Rate</Label>
+          <Label>Missed Call Rate</Label>
           <div className={`px-4 py-2.5 rounded-lg border text-sm font-semibold ${
             formData.missed_call_rate < 10
               ? 'bg-accent-green/10 border-accent-green/30 text-accent-green'

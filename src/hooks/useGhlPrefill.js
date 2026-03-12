@@ -4,8 +4,6 @@ import { fetchPrefill, fetchPipelineStatus } from '../lib/ghlApi'
 // Fields that can be auto-filled from GHL
 const GHL_PREFILL_FIELDS = new Set([
   'total_outbound_calls',
-  'missed_calls',
-  'missed_call_rate',
   'speed_to_lead',
   'speed_to_lead_minutes',
   'total_sms_sent',
