@@ -20,7 +20,7 @@ export async function fetchReports({ startDate, endDate, employeeId } = {}) {
 
   let query = supabase
     .from(TABLES.eod_reports)
-    .select('*, csr_employees(name)')
+    .select('*, csr_employees!csr_eod_reports_employee_id_fkey(name)')
     .eq('status', 'submitted')
     .order('report_date', { ascending: true })
 

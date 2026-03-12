@@ -34,7 +34,7 @@ export default function CSRReportsView() {
     try {
       let query = supabase
         .from(TABLES.eod_reports)
-        .select('*, csr_employees(name)')
+        .select('*, csr_employees!csr_eod_reports_employee_id_fkey(name)')
         .eq('status', 'submitted')
         .gte('report_date', dateRange.start)
         .lte('report_date', dateRange.end)
