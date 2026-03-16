@@ -438,9 +438,10 @@ function analyzeOpportunities(opportunities, stageMap, date) {
     };
 
     if (lastChange === date) {
-      // Booked: JR Booked, DR Booked, Booked, Closed Won, etc.
-      if (stageL.includes('book') || stageL.includes('schedul') || stageL.includes('won')
-          || stageL.includes('approved') || stageL.includes('submitted')) {
+      // Booked: JR Booked, DR Booked, Booked, Onsite Estimate Scheduled, Closed Won, etc.
+      // Estimate Scheduled counts as booked — the CSR got the lead on the schedule
+      if (stageL.includes('book') || stageL.includes('estimate scheduled')
+          || stageL.includes('won') || stageL.includes('approved')) {
         booked.push(entry);
       }
       // Lost: JR Lost, DR Lost, Closed Lost, etc.
@@ -451,7 +452,12 @@ function analyzeOpportunities(opportunities, stageMap, date) {
       else if (stageL.includes('non-qualified') || stageL.includes('not qualified') || stageL.includes('unqualified')) {
         notQualified.push(entry);
       }
-      // Quoted: received pricing but hasn't committed
+      // Estimate Completed: field team gave pricing — should be moved to Booked or Lost
+      // Treated as follow-up since it needs a final disposition update
+      else if (stageL.includes('estimate completed')) {
+        followup.push(entry);
+      }
+      // Quoted: received pricing but hasn't committed (quote sent, dumpster quote, etc.)
       else if (stageL.includes('quot') || stageL.includes('estimate') || stageL.includes('proposal')
                || stageL.includes('agreement sent') || stageL.includes('rental agreement')) {
         quoted.push(entry);
