@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../_lib/supabase-admin.js';
 
 const GHL_API_BASE = 'https://services.leadconnectorhq.com';
+const MIN_CONTACT_ATTEMPTS = 3;
 
 // Fetch opportunities from GHL API v2
 async function fetchGhlOpportunities(pipelineId, assignedTo) {
@@ -62,6 +63,89 @@ function detectStale(opportunities) {
     const lastUpdate = new Date(opp.lastStageChangeAt || opp.dateUpdated || opp.dateAdded);
     return (now - lastUpdate.getTime()) > staleThresholdMs;
   });
+}
+
+// Count outbound contact attempts for a list of contacts via GHL conversations
+// Returns a map of contactId → { attempts, lastContactDate }
+async function countContactAttempts(contactIds) {
+  const apiKey = process.env.GHL_API_KEY;
+  const locationId = process.env.GHL_LOCATION_ID;
+  if (!apiKey || !locationId || contactIds.length === 0) return {};
+
+  const results = {};
+
+  // Fetch conversations for each contact (limit to 10 to avoid rate limits)
+  const batch = contactIds.slice(0, 10);
+  await Promise.all(batch.map(async (contactId) => {
+    try {
+      const params = new URLSearchParams({
+        locationId,
+        contactId,
+        limit: '1',
+      });
+      const convResponse = await fetch(
+        `${GHL_API_BASE}/conversations/search?${params}`,
+        { headers: { 'Authorization': `Bearer ${apiKey}`, 'Version': '2021-07-28' } }
+      );
+      if (!convResponse.ok) return;
+      const convData = await convResponse.json();
+      const conversation = (convData.conversations || [])[0];
+      if (!conversation?.id) return;
+
+      // Fetch messages for this conversation
+      const msgResponse = await fetch(
+        `${GHL_API_BASE}/conversations/${conversation.id}/messages`,
+        { headers: { 'Authorization': `Bearer ${apiKey}`, 'Version': '2021-07-28' } }
+      );
+      if (!msgResponse.ok) return;
+      const msgData = await msgResponse.json();
+      const messages = msgData.messages?.messages || msgData.messages || [];
+
+      // Count distinct outbound contact days (each day with outbound = 1 attempt)
+      const outboundDays = new Set();
+      let lastOutbound = null;
+      for (const msg of messages) {
+        if ((msg.direction || '').toLowerCase() === 'outbound') {
+          const day = (msg.dateAdded || '').split('T')[0];
+          if (day) outboundDays.add(day);
+          if (!lastOutbound || msg.dateAdded > lastOutbound) lastOutbound = msg.dateAdded;
+        }
+      }
+
+      results[contactId] = {
+        attempts: outboundDays.size,
+        lastContactDate: lastOutbound,
+      };
+    } catch (err) {
+      console.error(`Error counting attempts for contact ${contactId}:`, err);
+    }
+  }));
+
+  return results;
+}
+
+// Check leads moved to Lost today — flag those with insufficient contact attempts
+function detectPrematureLost(opportunities, contactAttempts, date) {
+  const warnings = [];
+  for (const opp of opportunities) {
+    const stageName = (opp.pipelineStageName || '').toLowerCase();
+    const lastChange = (opp.lastStageChangeAt || opp.dateUpdated || '').split('T')[0];
+    if (lastChange !== date) continue;
+    if (!stageName.includes('lost') && !stageName.includes('declined')) continue;
+
+    const contactId = opp.contact?.id || opp.contactId || '';
+    const attempts = contactAttempts[contactId]?.attempts || 0;
+    if (attempts < MIN_CONTACT_ATTEMPTS) {
+      warnings.push({
+        id: opp.id,
+        name: opp.contact?.name || opp.contactName || opp.name || '',
+        stage: opp.pipelineStageName || opp.stage || '',
+        attempts,
+        required: MIN_CONTACT_ATTEMPTS,
+      });
+    }
+  }
+  return warnings;
 }
 
 export default async function handler(req, res) {
@@ -146,6 +230,29 @@ export default async function handler(req, res) {
       }
     }
 
+    // Collect contact IDs from stale leads + today's lost leads for attempt counting
+    const contactIdsToCheck = new Set();
+    for (const opp of staleOpps) {
+      const cid = opp.contact?.id || opp.contactId;
+      if (cid) contactIdsToCheck.add(cid);
+    }
+    if (date) {
+      for (const opp of opportunities) {
+        const updateDate = (opp.lastStageChangeAt || opp.dateUpdated || '').split('T')[0];
+        const stage = (opp.pipelineStageName || '').toLowerCase();
+        if (updateDate === date && (stage.includes('lost') || stage.includes('declined'))) {
+          const cid = opp.contact?.id || opp.contactId;
+          if (cid) contactIdsToCheck.add(cid);
+        }
+      }
+    }
+
+    // Count contact attempts for stale + lost leads
+    const contactAttempts = await countContactAttempts([...contactIdsToCheck]);
+
+    // Detect leads moved to Lost with < 3 contact attempts
+    const prematureLostWarnings = date ? detectPrematureLost(opportunities, contactAttempts, date) : [];
+
     // Cache the snapshot in Supabase
     await supabaseAdmin
       .from('ghl_daily_pipeline_summary')
@@ -166,14 +273,22 @@ export default async function handler(req, res) {
         total: opportunities.length,
         stages: stageGroups,
         stale_count: staleOpps.length,
-        stale_leads: staleOpps.map((o) => ({
-          id: o.id,
-          name: o.contactName || o.name,
-          stage: o.pipelineStageName || o.stage,
-          daysSinceUpdate: Math.round(
-            (Date.now() - new Date(o.lastStageChangeAt || o.dateUpdated).getTime()) / 86400000
-          ),
-        })),
+        stale_leads: staleOpps.map((o) => {
+          const cid = o.contact?.id || o.contactId;
+          const attempts = contactAttempts[cid]?.attempts || 0;
+          return {
+            id: o.id,
+            name: o.contactName || o.name,
+            stage: o.pipelineStageName || o.stage,
+            daysSinceUpdate: Math.round(
+              (Date.now() - new Date(o.lastStageChangeAt || o.dateUpdated).getTime()) / 86400000
+            ),
+            contactAttempts: attempts,
+            needsFollowUp: attempts < MIN_CONTACT_ATTEMPTS,
+          };
+        }),
+        premature_lost: prematureLostWarnings,
+        min_contact_attempts: MIN_CONTACT_ATTEMPTS,
         booked_today: bookedToday,
         lost_today: lostToday,
       },

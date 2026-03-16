@@ -18,6 +18,8 @@ export default function PipelineCheckSection({ formData, setField, ghl }) {
   const allChecked = checkedCount === PIPELINE_CHECKS.length
   const pipelineData = ghl?.pipelineData
   const staleLeads = pipelineData?.stale_leads || []
+  const prematureLost = pipelineData?.premature_lost || []
+  const minAttempts = pipelineData?.min_contact_attempts || 3
 
   // Derive counts that aren't direct API keys
   const enrichedData = pipelineData ? {
@@ -59,6 +61,32 @@ export default function PipelineCheckSection({ formData, setField, ghl }) {
         })}
       </div>
 
+      {/* Premature Lost Warnings */}
+      {prematureLost.length > 0 && (
+        <div className="mt-4 p-3 bg-accent-red/10 border border-accent-red/30 rounded-lg">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle className="w-4 h-4 text-accent-red shrink-0" />
+            <span className="text-sm font-semibold text-accent-red">
+              Insufficient Follow-Up Before Lost
+            </span>
+          </div>
+          <p className="text-xs text-slate-400 mb-2">
+            These leads were moved to Lost with fewer than {minAttempts} contact attempts.
+            Each lead must be contacted at least {minAttempts} times before marking as Lost.
+          </p>
+          <div className="space-y-1.5">
+            {prematureLost.map((lead) => (
+              <div key={lead.id} className="flex items-center justify-between text-xs">
+                <span className="text-slate-200 font-medium truncate">{lead.name || 'Unknown'}</span>
+                <span className="text-accent-red font-medium shrink-0 ml-2">
+                  {lead.attempts}/{lead.required} attempts
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Stale Leads Detail */}
       {staleLeads.length > 0 && (
         <div className="mt-4 p-3 bg-accent-red/5 border border-accent-red/20 rounded-lg">
@@ -69,7 +97,8 @@ export default function PipelineCheckSection({ formData, setField, ghl }) {
             </span>
           </div>
           <p className="text-xs text-slate-400 mb-2">
-            These leads haven't moved in over 48 hours. Update to Booked, Lost, or Not Qualified.
+            These leads haven't moved in over 48 hours. Follow up or update to Booked, Lost, or Not Qualified.
+            Minimum {minAttempts} contact attempts required before moving to Lost.
           </p>
           <div className="space-y-1.5">
             {staleLeads.map((lead) => (
@@ -78,9 +107,14 @@ export default function PipelineCheckSection({ formData, setField, ghl }) {
                   <span className="text-slate-200 font-medium truncate">{lead.name || 'Unknown'}</span>
                   <span className="text-slate-500 shrink-0">{lead.stage}</span>
                 </div>
-                <span className="text-accent-red font-medium shrink-0 ml-2">
-                  {lead.daysSinceUpdate}d ago
-                </span>
+                <div className="flex items-center gap-3 shrink-0 ml-2">
+                  <span className={`font-medium ${lead.needsFollowUp ? 'text-accent-gold' : 'text-accent-green'}`}>
+                    {lead.contactAttempts}/{minAttempts} contacts
+                  </span>
+                  <span className="text-accent-red font-medium">
+                    {lead.daysSinceUpdate}d ago
+                  </span>
+                </div>
               </div>
             ))}
           </div>
