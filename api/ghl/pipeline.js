@@ -36,17 +36,28 @@ async function fetchGhlOpportunities(pipelineId, assignedTo) {
   return data.opportunities || [];
 }
 
-// Detect stale opportunities (in early stages for >48 hours)
+// Detect stale opportunities (in early/mid stages for >48 hours without movement)
 function detectStale(opportunities) {
   const now = Date.now();
   const staleThresholdMs = 48 * 60 * 60 * 1000; // 48 hours
 
   return opportunities.filter((opp) => {
-    const stage = (opp.pipelineStageId || opp.stage || '').toLowerCase();
-    const isEarlyStage = stage.includes('new') || stage.includes('lead')
-      || stage.includes('quot') || stage.includes('contact');
+    const stageName = (opp.pipelineStageName || opp.stage || '').toLowerCase();
+    // Flag leads sitting in stages that require CSR action
+    const isActionableStage = stageName.includes('new') || stageName.includes('lead')
+      || stageName.includes('contact')
+      || stageName.includes('quot')
+      || stageName.includes('estimate')
+      || stageName.includes('conversation')
+      || stageName.includes('nurture')
+      || stageName.includes('agreement sent');
 
-    if (!isEarlyStage) return false;
+    // Don't flag terminal stages (booked, lost, won, non-qualified)
+    const isTerminal = stageName.includes('book') || stageName.includes('lost')
+      || stageName.includes('won') || stageName.includes('non-qualified')
+      || stageName.includes('not qualified') || stageName.includes('activated');
+
+    if (!isActionableStage || isTerminal) return false;
 
     const lastUpdate = new Date(opp.lastStageChangeAt || opp.dateUpdated || opp.dateAdded);
     return (now - lastUpdate.getTime()) > staleThresholdMs;
@@ -130,7 +141,7 @@ export default async function handler(req, res) {
         const updateDate = (opp.lastStageChangeAt || opp.dateUpdated || '').split('T')[0];
         if (updateDate !== date) continue;
         const stage = (opp.pipelineStageName || '').toLowerCase();
-        if (stage.includes('book') || stage.includes('won') || stage.includes('schedul')) bookedToday++;
+        if (stage.includes('book') || stage.includes('won') || stage.includes('estimate scheduled')) bookedToday++;
         if (stage.includes('lost') || stage.includes('dead')) lostToday++;
       }
     }
