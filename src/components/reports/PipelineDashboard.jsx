@@ -2,8 +2,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelL
 import { TrendingUp } from 'lucide-react'
 
 const STAGE_COLORS = {
-  'Total Leads': '#6366f1',       // indigo
-  'Total Dispositions': '#8b5cf6', // violet
+  'Total Dispositions': '#6366f1', // indigo
   'Booked': '#22c55e',            // green
   'Revenue': '#f59e0b',           // amber
 }
@@ -25,14 +24,10 @@ function ConversionArrow({ from, to, label }) {
 
 export default function PipelineDashboard({ totals }) {
   const totalDispositions = totals.booked + totals.quoted + totals.followup + totals.lost
-  // Total leads = all inbound activity across all channels (calls + SMS + FB + IG)
-  const totalLeads = (totals.inbound || 0) + (totals.smsReceived || 0) +
-    (totals.fbReceived || 0) + (totals.igReceived || 0)
 
-  if (!totals || totalLeads === 0) return null
+  if (!totals || totalDispositions === 0) return null
 
   const stages = [
-    { name: 'Total Leads', value: totalLeads, isRevenue: false },
     { name: 'Total Dispositions', value: totalDispositions, isRevenue: false },
     { name: 'Booked', value: totals.booked, isRevenue: false },
   ]
@@ -42,8 +37,8 @@ export default function PipelineDashboard({ totals }) {
     stages.push({ name: 'Revenue', value: totals.revenue, isRevenue: true })
   }
 
-  // For the funnel bar chart, normalize widths relative to max (total leads)
-  const maxVal = totalLeads || 1
+  // For the funnel bar chart, normalize widths relative to max (total dispositions)
+  const maxVal = totalDispositions || 1
   const chartData = stages.filter(s => !s.isRevenue).map(s => ({
     name: s.name,
     value: s.value,
