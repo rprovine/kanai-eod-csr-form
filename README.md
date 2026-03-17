@@ -294,6 +294,8 @@ kanai-eod-csr-form/
 
 Uses the shared Kanai Supabase instance with `csr_` prefixed tables to avoid conflicts with the Field Supervisor EOD form.
 
+**Row Level Security (RLS)** is enabled on all tables. Policies allow `anon` role read/write access for the client-side app. `ghl_user_mapping` and `ghl_daily_pipeline_summary` are read-only for `anon` (writes use service role from API). The `service_role` key bypasses RLS automatically.
+
 ### Tables
 
 | Table | Description |
