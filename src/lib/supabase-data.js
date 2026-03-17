@@ -74,6 +74,10 @@ export async function saveEodReport(formData, { ghlSuggestions } = {}) {
     reportFields.ghl_suggested_disp_lost = ghlSuggestions.disp_lost ?? null
   }
 
+  // Convert empty time strings to null (PostgreSQL time columns reject empty strings)
+  if (reportFields.shift_start === '') reportFields.shift_start = null
+  if (reportFields.shift_end === '') reportFields.shift_end = null
+
   // Add server-side metadata
   const reportData = {
     ...reportFields,
