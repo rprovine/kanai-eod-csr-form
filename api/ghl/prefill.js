@@ -345,36 +345,72 @@ function calculateSpeedToLead(allDateMessages, ghlUserId, date, shiftHours) {
   };
 }
 
-// Fetch opportunities assigned to a user
-async function fetchGhlOpportunities(userId) {
+// Fetch ALL opportunities for the location (not filtered by assigned_to)
+// Attribution is determined by conversation activity, not GHL assignment
+async function fetchAllOpportunities() {
   const apiKey = process.env.GHL_API_KEY;
   const locationId = process.env.GHL_LOCATION_ID;
   if (!apiKey || !locationId) return [];
 
-  try {
-    const params = new URLSearchParams({
-      location_id: locationId,
-      assigned_to: userId,
-      limit: '100',
-    });
+  const allOpps = [];
+  let startAfterId = '';
 
-    const response = await fetch(
-      `${GHL_API_BASE}/opportunities/search?${params}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Version': '2021-07-28',
-        },
-      }
-    );
+  for (let page = 0; page < 5; page++) {
+    try {
+      const params = new URLSearchParams({
+        location_id: locationId,
+        limit: '100',
+      });
+      if (startAfterId) params.set('startAfterId', startAfterId);
 
-    if (!response.ok) return [];
-    const data = await response.json();
-    return data.opportunities || [];
-  } catch (err) {
-    console.error('GHL opportunities fetch error:', err);
-    return [];
+      const response = await fetch(
+        `${GHL_API_BASE}/opportunities/search?${params}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Version': '2021-07-28',
+          },
+        }
+      );
+
+      if (!response.ok) break;
+      const data = await response.json();
+      const opps = data.opportunities || [];
+      allOpps.push(...opps);
+      if (opps.length < 100) break;
+      startAfterId = opps[opps.length - 1].id;
+    } catch (err) {
+      console.error('GHL opportunities fetch error:', err);
+      break;
+    }
   }
+
+  return allOpps;
+}
+
+// Filter opportunities to those where this CSR had conversation activity
+function filterOpportunitiesByCsrActivity(opportunities, allDateMessages, ghlUserId, assignedConversationIds) {
+  // Build set of contactIds where this CSR had outbound activity
+  const csrContactIds = new Set();
+  for (const msg of allDateMessages) {
+    if (msg.direction === 'outbound' && msg.userId === ghlUserId && msg.contactId) {
+      csrContactIds.add(msg.contactId);
+    }
+  }
+
+  // Also include contacts from assigned conversations
+  const assignedContactIds = new Set();
+  for (const msg of allDateMessages) {
+    if (msg.conversationId && assignedConversationIds.has(msg.conversationId) && msg.contactId) {
+      assignedContactIds.add(msg.contactId);
+    }
+  }
+
+  return opportunities.filter(opp => {
+    const contactId = opp.contact?.id || opp.contactId || '';
+    // CSR interacted with this contact OR it's assigned to them in GHL
+    return csrContactIds.has(contactId) || assignedContactIds.has(contactId) || opp.assignedTo === ghlUserId;
+  });
 }
 
 // Get pipeline stage names map
@@ -525,7 +561,7 @@ export default async function handler(req, res) {
     // Look up GHL user ID from employee mapping
     const { data: mapping } = await supabaseAdmin
       .from('ghl_user_mapping')
-      .select('ghl_user_id')
+      .select('ghl_user_id, ghl_user_name')
       .eq('employee_id', employee_id)
       .single();
 
@@ -541,13 +577,18 @@ export default async function handler(req, res) {
 
     const ghlUserId = mapping.ghl_user_id;
 
-    // Fetch all messages, opportunities, and assigned conversations in parallel
-    const [messageData, opportunities, stageMap, assignedConvIds] = await Promise.all([
+    // Fetch all messages, ALL opportunities, and assigned conversations in parallel
+    const [messageData, allOpportunities, stageMap, assignedConvIds] = await Promise.all([
       fetchAllMessages(ghlUserId, date),
-      fetchGhlOpportunities(ghlUserId),
+      fetchAllOpportunities(),
       fetchPipelineStages(),
       fetchAssignedConversationIds(ghlUserId),
     ]);
+
+    // Filter to opportunities where this CSR had activity
+    const opportunities = filterOpportunitiesByCsrActivity(
+      allOpportunities, messageData.allDateMessages, ghlUserId, assignedConvIds
+    );
 
     // Analyze the data
     const callMetrics = analyzeCallMessages(messageData.userCalls, messageData.totalInbound, messageData.allDateMessages, ghlUserId, assignedConvIds);
@@ -609,6 +650,104 @@ export default async function handler(req, res) {
     sources.disp_followup_required = 'ghl_pipeline';
     sources.disp_not_qualified = 'ghl_pipeline';
     sources.disp_lost = 'ghl_pipeline';
+
+    // Log lead activity for this CSR — tracks who did what for multi-CSR attribution
+    // Maps disposition type → action for the activity log
+    const ACTION_MAP = {
+      booked: 'booked',
+      quoted: 'quoted',
+      followup: 'follow_up',
+      lost: 'lost',
+      notQualified: 'not_qualified',
+    };
+    const dispBuckets = { booked: pipelineData.opportunities || [], quoted: [], followup: [], lost: [], notQualified: [] };
+    // Rebuild buckets from analyzeOpportunities internal data
+    for (const opp of opportunities) {
+      const stageName = stageMap[opp.pipelineStageId] || opp.pipelineStageName || '';
+      const stageL = stageName.toLowerCase();
+      const lastChange = (opp.lastStageChangeAt || opp.updatedAt || '').split('T')[0];
+      if (lastChange !== date) continue;
+      const entry = { id: opp.id, contactId: opp.contact?.id || opp.contactId, name: opp.contact?.name || opp.name || '', stage: stageName };
+
+      if (stageL.includes('book') || stageL.includes('estimate scheduled') || stageL.includes('won') || stageL.includes('approved')) {
+        dispBuckets.booked.push(entry);
+      } else if (stageL.includes('lost') || stageL.includes('declined') || stageL.includes('cancel')) {
+        dispBuckets.lost.push(entry);
+      } else if (stageL.includes('non-qualified') || stageL.includes('not qualified') || stageL.includes('unqualified')) {
+        dispBuckets.notQualified.push(entry);
+      } else if (stageL.includes('quot') || stageL.includes('estimate') || stageL.includes('proposal') || stageL.includes('agreement')) {
+        dispBuckets.quoted.push(entry);
+      } else if (!stageL.includes('new')) {
+        dispBuckets.followup.push(entry);
+      }
+    }
+
+    // Also log first_contact for any conversation where this CSR was the first responder today
+    const firstContactOpps = [];
+    if (speedToLead && speedToLead.conversations_counted > 0) {
+      // CSR responded to new leads today — log as first_contact
+      // We already have the contact IDs from message analysis
+      const respondedContactIds = new Set();
+      for (const msg of messageData.allDateMessages) {
+        if (msg.direction === 'outbound' && msg.userId === ghlUserId && msg.contactId) {
+          respondedContactIds.add(msg.contactId);
+        }
+      }
+      for (const opp of opportunities) {
+        const cid = opp.contact?.id || opp.contactId;
+        if (cid && respondedContactIds.has(cid)) {
+          const stageName = stageMap[opp.pipelineStageId] || opp.pipelineStageName || '';
+          firstContactOpps.push({ id: opp.id, contactId: cid, name: opp.contact?.name || opp.name || '', stage: stageName });
+        }
+      }
+    }
+
+    // Build activity log rows
+    const activityRows = [];
+    const seen = new Set();
+    for (const [bucket, entries] of Object.entries(dispBuckets)) {
+      const action = ACTION_MAP[bucket];
+      if (!action) continue;
+      for (const e of entries) {
+        const key = `${e.id}-${action}-${date}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        activityRows.push({
+          opportunity_id: e.id || e.ghlId,
+          contact_id: e.contactId || null,
+          contact_name: e.name,
+          csr_employee_id: employee_id,
+          csr_name: mapping.ghl_user_name || '',
+          action,
+          action_date: date,
+          stage_name: e.stage,
+        });
+      }
+    }
+    for (const e of firstContactOpps) {
+      const key = `${e.id}-first_contact-${date}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      activityRows.push({
+        opportunity_id: e.id,
+        contact_id: e.contactId || null,
+        contact_name: e.name,
+        csr_employee_id: employee_id,
+        csr_name: mapping.ghl_user_name || '',
+        action: 'first_contact',
+        action_date: date,
+        stage_name: e.stage,
+      });
+    }
+
+    // Upsert activity log (idempotent on opportunity_id + csr + action + date)
+    if (activityRows.length > 0) {
+      await supabaseAdmin
+        .from('lead_activity_log')
+        .upsert(activityRows, { onConflict: 'opportunity_id,csr_employee_id,action,action_date', ignoreDuplicates: true })
+        .then(() => {})
+        .catch(err => console.error('Lead activity log error:', err));
+    }
 
     return res.status(200).json({
       fields,
