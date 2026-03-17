@@ -2,7 +2,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelL
 import { TrendingUp } from 'lucide-react'
 
 const STAGE_COLORS = {
-  'Total Dispositions': '#6366f1', // indigo
+  'Qualified Leads': '#6366f1',   // indigo
   'Booked': '#22c55e',            // green
   'Revenue': '#f59e0b',           // amber
 }
@@ -28,7 +28,7 @@ export default function PipelineDashboard({ totals }) {
   if (!totals || totalDispositions === 0) return null
 
   const stages = [
-    { name: 'Total Dispositions', value: totalDispositions, isRevenue: false },
+    { name: 'Qualified Leads', value: totalDispositions, isRevenue: false },
     { name: 'Booked', value: totals.booked, isRevenue: false },
   ]
 

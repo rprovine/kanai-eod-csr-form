@@ -178,8 +178,10 @@ export default function CSRReportsView() {
     stlSum: 0, stlCount: 0,
   })
 
-  const avgBookingRate = enrichedReports.length > 0
-    ? Math.round(enrichedReports.reduce((sum, r) => sum + r.bookingRate, 0) / enrichedReports.length * 10) / 10
+  // Use aggregate booking rate (total booked / total qualified leads) — not average of daily rates
+  const totalQualified = totals.booked + totals.quoted + totals.followup + totals.lost
+  const avgBookingRate = totalQualified > 0
+    ? Math.round((totals.booked / totalQualified) * 1000) / 10
     : 0
   const avgMissedRate = enrichedReports.length > 0
     ? Math.round(enrichedReports.reduce((sum, r) => sum + r.missedCallRate, 0) / enrichedReports.length * 10) / 10
