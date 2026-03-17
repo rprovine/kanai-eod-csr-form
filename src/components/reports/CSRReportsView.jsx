@@ -5,6 +5,9 @@ import { TABLES } from '../../lib/constants'
 import { calcBookingRate, calcMissedCallRate, getPerformanceTier, calcGuardrailDeductions, calcAcceleratorBonus } from '../../lib/kpi-calculations'
 import { fetchEmployees } from '../../lib/supabase-data'
 import { DATE_PRESETS, getWeekRange, formatDisplayDate, getCurrentPayPeriod } from '../../lib/dateHelpers'
+import CSRLeaderboard from './CSRLeaderboard'
+import LeadSourceBreakdown from './LeadSourceBreakdown'
+import PipelineDashboard from './PipelineDashboard'
 
 export default function CSRReportsView() {
   const [dateRange, setDateRange] = useState(() => getWeekRange(0))
@@ -202,18 +205,21 @@ export default function CSRReportsView() {
     enrichedReports.reduce((acc, r) => {
       const key = r.employee_id
       if (!acc[key]) {
-        acc[key] = { name: r.csrName, reports: 0, totalBookingRate: 0, totalBooked: 0, totalJobsBooked: 0, totalRevenue: 0 }
+        acc[key] = { name: r.csrName, reports: 0, totalBookingRate: 0, totalBooked: 0, totalJobsBooked: 0, totalRevenue: 0, totalStl: 0, stlCount: 0 }
       }
       acc[key].reports++
       acc[key].totalBookingRate += r.bookingRate
       acc[key].totalBooked += parseInt(r.disp_booked) || 0
       acc[key].totalJobsBooked += r.jobCount
       acc[key].totalRevenue += r.revenue
+      acc[key].totalStl += r.speed_to_lead_minutes || 0
+      acc[key].stlCount += (r.speed_to_lead_minutes > 0 ? 1 : 0)
       return acc
     }, {})
   ).map(csr => ({
     ...csr,
     avgBookingRate: Math.round(csr.totalBookingRate / csr.reports * 10) / 10,
+    avgStl: csr.stlCount > 0 ? Math.round(csr.totalStl / csr.stlCount * 10) / 10 : null,
     tier: getPerformanceTier(csr.totalBookingRate / csr.reports),
   }))
 
@@ -374,6 +380,11 @@ export default function CSRReportsView() {
         <div className="bg-card-bg border border-card-border rounded-xl p-8 text-center">
           <p className="text-slate-400">No submitted reports found for this date range.</p>
         </div>
+      )}
+
+      {/* Pipeline Dashboard */}
+      {!isLoading && reports.length > 0 && totals.inbound > 0 && (
+        <PipelineDashboard totals={totals} />
       )}
 
       {/* Summary Cards */}
@@ -591,51 +602,11 @@ export default function CSRReportsView() {
             </div>
           </div>
 
-          {/* Per-CSR Performance Breakdown */}
-          {csrPerformance.length > 1 && (
-            <div className="bg-card-bg border border-card-border rounded-xl p-5">
-              <h3 className="text-sm font-semibold text-slate-200 mb-4 flex items-center gap-2">
-                <Trophy className="w-4 h-4 text-accent-gold" />
-                CSR Performance Breakdown
-              </h3>
-              <div className="space-y-3">
-                {csrPerformance
-                  .sort((a, b) => b.avgBookingRate - a.avgBookingRate)
-                  .map(csr => (
-                    <div key={csr.name} className="flex items-center gap-4">
-                      <div className="w-24 text-sm font-medium text-slate-200 truncate">{csr.name}</div>
-                      <div className="flex-1">
-                        <div className="h-6 bg-slate-800 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all duration-500 ${
-                              csr.avgBookingRate >= 70 ? 'bg-accent-green' :
-                              csr.avgBookingRate >= 60 ? 'bg-kanai-blue-light' :
-                              csr.avgBookingRate >= 50 ? 'bg-accent-gold' : 'bg-accent-red'
-                            }`}
-                            style={{ width: `${Math.min(csr.avgBookingRate, 100)}%` }}
-                          />
-                        </div>
-                      </div>
-                      <div className={`w-16 text-right text-sm font-bold ${csr.tier.color}`}>
-                        {csr.avgBookingRate}%
-                      </div>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        csr.tier.tier === 'elite' ? 'bg-accent-green/15 text-accent-green' :
-                        csr.tier.tier === 'standard' ? 'bg-kanai-blue/15 text-kanai-blue-light' :
-                        csr.tier.tier === 'developing' ? 'bg-accent-gold/15 text-accent-gold' :
-                        'bg-accent-red/15 text-accent-red'
-                      }`}>
-                        {csr.tier.label}
-                      </span>
-                      <div className="w-24 text-right text-xs text-slate-400">
-                        ${csr.totalRevenue.toLocaleString()}
-                      </div>
-                    </div>
-                  ))
-                }
-              </div>
-            </div>
-          )}
+          {/* Per-CSR Leaderboard */}
+          <CSRLeaderboard csrPerformance={csrPerformance} />
+
+          {/* Lead Source Breakdown */}
+          <LeadSourceBreakdown jobsBooked={jobsBooked} workizRevenue={workizRevenue} />
         </>
       )}
     </div>

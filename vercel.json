@@ -17,5 +17,11 @@
         { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
       ]
     }
+  ],
+  "crons": [
+    { "path": "/api/csr/submission-reminder", "schedule": "30 2 * * *" },
+    { "path": "/api/workiz/revenue-sync", "schedule": "0 9 * * *" },
+    { "path": "/api/csr/estimates-digest", "schedule": "30 17 * * *" },
+    { "path": "/api/reports/weekly-executive", "schedule": "0 17 * * 0" }
   ]
 }
