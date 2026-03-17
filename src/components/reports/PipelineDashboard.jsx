@@ -111,7 +111,7 @@ export default function PipelineDashboard({ totals }) {
       </div>
 
       {/* Conversion Summary */}
-      <div className="grid grid-cols-3 gap-3 pt-3 border-t border-card-border">
+      <div className="grid grid-cols-2 gap-3 pt-3 border-t border-card-border">
         <div className="text-center">
           <p className="text-xs text-slate-500">Booking Rate</p>
           <p className="text-sm font-semibold text-accent-green">
@@ -124,12 +124,6 @@ export default function PipelineDashboard({ totals }) {
             {totals.booked > 0 && totals.revenue > 0
               ? `$${Math.round(totals.revenue / totals.booked).toLocaleString()}`
               : '--'}
-          </p>
-        </div>
-        <div className="text-center">
-          <p className="text-xs text-slate-500">Call-to-Booking Rate</p>
-          <p className="text-sm font-semibold text-kanai-blue-light">
-            {totals.inbound > 0 ? `${Math.round((totals.booked / totals.inbound) * 100)}%` : '--'}
           </p>
         </div>
       </div>
