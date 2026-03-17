@@ -153,6 +153,8 @@ export default function CSRReportsView() {
     acc.jobsBooked += r.jobCount
     acc.smsSent += parseInt(r.total_sms_sent) || 0
     acc.smsReceived += parseInt(r.total_sms_received) || 0
+    acc.fbReceived += parseInt(r.total_fb_messages_received) || 0
+    acc.igReceived += parseInt(r.total_ig_messages_received) || 0
     acc.msgsSent += parseInt(r.total_messages_sent) || 0
     acc.msgsReceived += parseInt(r.total_messages_received) || 0
     acc.upsells += parseInt(r.upsell_count) || 0
@@ -170,7 +172,7 @@ export default function CSRReportsView() {
   }, {
     inbound: 0, outbound: 0, missed: 0,
     booked: 0, quoted: 0, followup: 0, lost: 0, jobsBooked: 0,
-    smsSent: 0, smsReceived: 0, msgsSent: 0, msgsReceived: 0,
+    smsSent: 0, smsReceived: 0, fbReceived: 0, igReceived: 0, msgsSent: 0, msgsReceived: 0,
     upsells: 0, reviews: 0, winbacks: 0, cancellations: 0, noShows: 0,
     acceleratorBonus: 0, revenue: 0,
     stlSum: 0, stlCount: 0,
@@ -383,7 +385,7 @@ export default function CSRReportsView() {
       )}
 
       {/* Pipeline Dashboard */}
-      {!isLoading && reports.length > 0 && totals.inbound > 0 && (
+      {!isLoading && reports.length > 0 && (
         <PipelineDashboard totals={totals} />
       )}
 
