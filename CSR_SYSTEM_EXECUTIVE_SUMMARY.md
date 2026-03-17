@@ -43,9 +43,18 @@ Booking Rate = Booked / (Booked + Quoted + Follow-Up + Lost)
 | Scheduled an onsite estimate | Booked |
 | Booked a junk removal or dumpster job | Booked |
 | Gave a quote, customer hasn't decided | Quoted |
-| Customer contacted, needs follow-up | Follow-Up |
+| First contact made, moved to Needs Follow-Up | Follow-Up |
+| Customer contacted, awaiting response | Follow-Up |
 | Customer declined or went elsewhere | Lost |
 | Not a real lead (spam, wrong number) | Not Qualified (excluded from rate) |
+
+### Lead Lifecycle
+
+```
+New Lead → Contacted → Needs Follow-Up → Booked or Lost
+```
+
+After first contact, leads move to **Needs Follow-Up** where they stay until the CSR either books the job or marks it lost. The system enforces a minimum of 3 contact attempts before a lead can be moved to Lost without a documented reason.
 
 ### 3. Follow-Up Enforcement
 

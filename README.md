@@ -54,6 +54,7 @@ Dispositions are derived from GHL pipeline stage changes that occurred on the re
 |---|---|---|
 | New Lead | (skipped) | No |
 | Contacted | Follow-Up | Denominator |
+| Needs Follow-Up | Follow-Up | Denominator |
 | JR - Onsite Estimate Scheduled | Booked | Numerator + Denominator |
 | JR - Onsite Estimate Completed | Follow-Up | Denominator |
 | DR - Dumpster Quote Given | Quoted | Denominator |
@@ -63,6 +64,16 @@ Dispositions are derived from GHL pipeline stage changes that occurred on the re
 | DR Booked | Booked | Numerator + Denominator |
 | DR Lost | Lost | Denominator |
 | Non-Qualified Lead | Not Qualified | Excluded |
+
+### Lead Lifecycle
+
+```
+New Lead → Contacted → Needs Follow-Up → Booked / Lost
+                                       ↘ Estimate Scheduled → Booked / Lost
+                                       ↘ Dumpster Quote Given → DR Booked / DR Lost
+```
+
+Leads move to "Needs Follow-Up" after first contact and stay there until booked, lost (with valid reason), or 3 contact attempts have been made. After 3 attempts the CSR must move the lead to Booked or Lost.
 
 ### Booking Rate Formula
 

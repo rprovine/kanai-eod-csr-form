@@ -47,6 +47,7 @@ function detectStale(opportunities) {
     // Flag leads sitting in stages that require CSR action
     const isActionableStage = stageName.includes('new') || stageName.includes('lead')
       || stageName.includes('contact')
+      || stageName.includes('follow')
       || stageName.includes('quot')
       || stageName.includes('estimate')
       || stageName.includes('conversation')
