@@ -12,6 +12,7 @@ export default function CSRReportsView() {
   const [selectedEmployee, setSelectedEmployee] = useState('all')
   const [reports, setReports] = useState([])
   const [jobsBooked, setJobsBooked] = useState([])
+  const [workizRevenue, setWorkizRevenue] = useState({}) // job_number → revenue from field supervisor data
   const [employees, setEmployees] = useState([])
   const [isLoading, setIsLoading] = useState(true)
 
@@ -55,8 +56,31 @@ export default function CSRReportsView() {
           .from(TABLES.jobs_booked)
           .select('*')
           .in('eod_report_id', reportIds)
-        if (!jobsError) setJobsBooked(jobs || [])
-        else setJobsBooked([])
+        if (!jobsError) {
+          setJobsBooked(jobs || [])
+
+          // Cross-reference with junk_removal_jobs for actual revenue
+          const jobNumbers = (jobs || [])
+            .map(j => j.job_number)
+            .filter(Boolean)
+          if (jobNumbers.length > 0) {
+            const { data: jrJobs } = await supabase
+              .from('junk_removal_jobs')
+              .select('job_number, revenue')
+              .in('job_number', jobNumbers)
+            if (jrJobs) {
+              const revenueMap = {}
+              for (const jr of jrJobs) {
+                if (jr.job_number && jr.revenue > 0) {
+                  revenueMap[jr.job_number] = parseFloat(jr.revenue)
+                }
+              }
+              setWorkizRevenue(revenueMap)
+            }
+          }
+        } else {
+          setJobsBooked([])
+        }
       } else {
         setJobsBooked([])
       }
@@ -94,7 +118,12 @@ export default function CSRReportsView() {
     const guardrails = calcGuardrailDeductions(r)
     const revenue = jobsBooked
       .filter(j => j.eod_report_id === r.id)
-      .reduce((sum, j) => sum + (parseFloat(j.estimated_revenue) || 0), 0)
+      .reduce((sum, j) => {
+        // Use CSR-entered revenue first, fall back to actual Workiz revenue from field supervisor data
+        const csrRev = parseFloat(j.estimated_revenue) || 0
+        const workizRev = j.job_number ? (workizRevenue[j.job_number] || 0) : 0
+        return sum + (csrRev > 0 ? csrRev : workizRev)
+      }, 0)
 
     return {
       ...r,

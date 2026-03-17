@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react'
 import { fetchPrefill, fetchPipelineStatus } from '../lib/ghlApi'
+import { getDefaultJobEntry } from '../lib/form-defaults'
 
 // Fields that can be auto-filled from GHL
 const GHL_PREFILL_FIELDS = new Set([
@@ -51,6 +52,24 @@ export function useGhlPrefill(setFields) {
       ])
 
       if (prefillResult?.fields && Object.keys(prefillResult.fields).length > 0) {
+        // Auto-populate Jobs Booked from GHL booked opportunities
+        const bookedOpps = prefillResult.pipeline?.opportunities || []
+        if (bookedOpps.length > 0) {
+          const jobEntries = bookedOpps.map((opp) => {
+            const stage = (opp.stage || '').toLowerCase()
+            const isDumpster = stage.includes('dr ')
+            return {
+              ...getDefaultJobEntry(),
+              customer_name: opp.name || '',
+              job_type: isDumpster ? 'dumpster_rental' : 'junk_removal',
+              system: isDumpster ? 'Docket' : 'Workiz',
+              ghl_pipeline_updated: true,
+              notes: `GHL: ${opp.stage}`,
+            }
+          })
+          prefillResult.fields.jobs_booked = jobEntries
+        }
+
         // Apply prefill data to form
         setFields(prefillResult.fields)
 
