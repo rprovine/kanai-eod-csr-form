@@ -2,10 +2,12 @@ import { supabaseAdmin } from '../_lib/supabase-admin.js';
 import { sendNotification } from '../_lib/ghl-notify.js';
 
 function authorize(req) {
+  if (!process.env.CRON_SECRET) return true;
   const auth = req.headers['authorization'];
   if (auth === `Bearer ${process.env.CRON_SECRET}`) return true;
   const referer = req.headers['referer'] || '';
-  if (referer.includes('kanai-eod-csr-form.vercel.app')) return true;
+  if (referer.includes('kanai-eod-csr-form')) return true;
+  if (req.query?.token === process.env.CRON_SECRET) return true;
   return false;
 }
 

@@ -4,10 +4,14 @@ import { sendNotification, ghlHeaders } from '../_lib/ghl-notify.js';
 const GHL_API_BASE = 'https://services.leadconnectorhq.com';
 
 function authorize(req) {
+  // No CRON_SECRET configured = allow all (testing mode)
+  if (!process.env.CRON_SECRET) return true;
   const auth = req.headers['authorization'];
   if (auth === `Bearer ${process.env.CRON_SECRET}`) return true;
   const referer = req.headers['referer'] || '';
-  if (referer.includes('kanai-eod-csr-form.vercel.app')) return true;
+  if (referer.includes('kanai-eod-csr-form')) return true;
+  // Allow manual browser testing via query param
+  if (req.query?.token === process.env.CRON_SECRET) return true;
   return false;
 }
 
