@@ -28,13 +28,30 @@ When a CSR selects their name and report date, the system automatically pulls da
 | Facebook sent/received | Yes | GHL Messages Export API (type 11) |
 | Instagram sent/received | Yes | GHL Messages Export API (type 18) |
 | Speed-to-lead | Yes (median, per-channel breakdown) | Calculated from conversation response gaps |
-| Dispositions | Yes (booked, quoted, follow-up, not qualified, lost) | GHL Opportunities API (pipeline stage changes) |
+| Dispositions | Yes (booked, quoted, follow-up, not qualified, lost) | GHL Opportunities API — attributed by conversation activity, not GHL assignment |
 | Jobs Booked | Yes (customer name, job type, system) | GHL Opportunities API (booked opps). CSR adds Workiz job # manually. |
 | Pipeline context | Yes (new leads, stale, booked/lost counts) | GHL Opportunities API |
+| Lead activity log | Yes (auto-logged on prefill) | Tracks every CSR interaction per lead for multi-CSR attribution |
 
 ### Why Inbound/Missed Calls Are Manual
 
 GHL IVR calls (type 24) don't include a `userId` field, so there's no way to attribute which CSR answered or missed a specific inbound call. The API only knows location-wide totals. To keep per-CSR metrics accurate, inbound and missed calls are entered manually.
+
+### CSR Attribution (Lead Activity Log)
+
+The system does **not** rely on GHL's `assigned_to` field for CSR attribution. Instead, it determines which CSR worked each lead by analyzing conversation activity:
+
+1. When a CSR opens their EOD form, the system fetches **all** GHL opportunities (location-wide)
+2. It cross-references with the day's messages to find opportunities where the CSR had **outbound activity** (calls, SMS, FB, IG)
+3. Only those opportunities count as the CSR's dispositions
+4. Every interaction is logged to the `lead_activity_log` table with the action type
+
+**Multi-CSR lead handling:**
+- CSR1 contacts a lead Monday → logged as `first_contact` for CSR1
+- CSR2 books the same lead Wednesday → logged as `booked` for CSR2
+- Both CSRs get credit for what they did — no single-assignment conflict
+
+**Actions tracked:** `first_contact`, `follow_up`, `quoted`, `booked`, `lost`, `not_qualified`
 
 ### How Dispositions Work
 
@@ -325,6 +342,7 @@ Uses the shared Kanai Supabase instance with `csr_` prefixed tables to avoid con
 | `ghl_user_mapping` | Maps `employee_id` to `ghl_user_id` for API lookups |
 | `ghl_daily_pipeline_summary` | Cached daily pipeline snapshots per CSR |
 | `weekly_reports` | Stored weekly executive reports (auto-generated Monday mornings) |
+| `lead_activity_log` | Per-CSR lead interaction log for multi-CSR attribution (first_contact, follow_up, booked, lost, etc.) |
 
 ### Bonus Tracking Columns (on `csr_eod_reports`)
 

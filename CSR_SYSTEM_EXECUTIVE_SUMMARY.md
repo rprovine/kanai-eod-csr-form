@@ -35,6 +35,8 @@ Booking Rate = Booked / (Booked + Quoted + Follow-Up + Lost)
 - Tracked per CSR per day, aggregated across any date range
 - "All CSRs" view shows company-wide performance with side-by-side comparison
 - Non-qualified leads (spam, wrong numbers) are excluded so they don't skew the rate
+- **Attribution is based on conversation activity, not GHL assignment** — the system determines which CSR worked each lead by checking who had outbound messages in the conversation
+- Supports multi-CSR leads: if CSR1 makes first contact and CSR2 closes the deal, both get credit for their respective actions
 
 **Current Pipeline Stage Mapping:**
 
