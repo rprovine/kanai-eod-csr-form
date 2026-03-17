@@ -29,6 +29,7 @@ When a CSR selects their name and report date, the system automatically pulls da
 | Instagram sent/received | Yes | GHL Messages Export API (type 18) |
 | Speed-to-lead | Yes (median, per-channel breakdown) | Calculated from conversation response gaps |
 | Dispositions | Yes (booked, quoted, follow-up, not qualified, lost) | GHL Opportunities API (pipeline stage changes) |
+| Jobs Booked | Yes (customer name, job type, system) | GHL Opportunities API (booked opps). CSR adds Workiz job # manually. |
 | Pipeline context | Yes (new leads, stale, booked/lost counts) | GHL Opportunities API |
 
 ### Why Inbound/Missed Calls Are Manual
@@ -115,6 +116,17 @@ The Pipeline Check section shows:
 
 Each auto-filled field shows a source badge in the UI (`GHL`, `GHL Pipeline`, etc.). CSRs can override any value, and the badge changes to `Edited`. Overrides that deviate more than 20% from the GHL value trigger a discrepancy warning.
 
+### Revenue Tracking
+
+Revenue is tied back to CSRs through Workiz job numbers:
+
+1. **GHL auto-populates** the Jobs Booked section with customer name and job type from booked opportunities
+2. **CSR enters the Workiz job number** — the only manual step required
+3. **Reports view** cross-references job numbers against `junk_removal_jobs` (field supervisor EOD data) for actual completed revenue
+4. **Fallback:** If the field team hasn't reported yet, uses CSR-entered estimated revenue
+
+This connects the CSR who booked the lead to the actual job revenue once the field team completes and reports it. Dumpster rental revenue is not tracked yet (no Docket integration).
+
 ## Form Sections
 
 The EOD report has 14 sections:
@@ -125,7 +137,7 @@ The EOD report has 14 sections:
 | 2 | Communications | Checklist confirming all channels were covered |
 | 3 | Call & Messaging Metrics | Calls (manual) + SMS/FB/IG counts (auto-filled from GHL) |
 | 4 | Dispositions | Call outcome categorization (auto-filled from GHL pipeline) |
-| 5 | Jobs Booked | Individual job entries with customer, type, revenue, source |
+| 5 | Jobs Booked | Auto-populated from GHL booked opps. CSR adds Workiz job # for revenue tracking. |
 | 6 | Emails & Forms | Web form and email submission tracking |
 | 7 | Yelp Leads | Yelp-specific lead tracking |
 | 8 | Follow-Ups | Follow-up attempts with timing, channel, and result |

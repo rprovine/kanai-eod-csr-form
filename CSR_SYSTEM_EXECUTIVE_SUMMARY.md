@@ -93,12 +93,23 @@ Full bonus calculation built into the system:
 | **Revenue Milestones** | $50K/period = $150 bonus; $75K/period = $300 bonus |
 | **New Hire Ramp** | Weeks 1-2: guaranteed $100 bonus; Weeks 3-4: reduced 40% booking threshold |
 
-### 7. Management Reporting
+### 7. Revenue Attribution
+
+Revenue is tied directly to the CSR who booked the lead:
+
+1. When a CSR moves a lead to "Booked" in GHL, the Jobs Booked section auto-populates with the customer name
+2. The CSR enters the **Workiz job number** — the only manual step
+3. Once the field team completes the job and reports revenue in their EOD, the CSR's reports automatically show the actual revenue
+
+This closes the loop between "CSR booked a lead" and "how much money did that lead generate." Junk removal revenue is tracked now; dumpster rental revenue will follow once Docket integration is added.
+
+### 8. Management Reporting
 
 The Reports tab provides:
 - Date range filtering (this week, last week, pay period, custom)
 - Individual CSR or company-wide aggregate view
 - Per-CSR performance comparison with visual bar charts
+- Revenue per CSR (pulled from completed Workiz jobs via field supervisor data)
 - CSV export for all data
 - Pay period bonus breakdown with guardrail warnings
 
