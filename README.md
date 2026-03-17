@@ -281,7 +281,10 @@ kanai-eod-csr-form/
 │   │   │   ├── BonusTrackingSection.jsx
 │   │   │   └── KPIDashboardSection.jsx
 │   │   └── reports/
-│   │       └── CSRReportsView.jsx  # Historical reports with filters, pay period summary, CSV export
+│   │       ├── CSRReportsView.jsx  # Historical reports with filters, pay period summary, CSV export
+│   │       ├── CSRLeaderboard.jsx  # Ranked CSR performance comparison
+│   │       ├── LeadSourceBreakdown.jsx  # Revenue by lead source
+│   │       └── PipelineDashboard.jsx    # Inbound-to-revenue funnel visualization
 │   ├── hooks/
 │   │   ├── useEodForm.js         # Form state management
 │   │   ├── useAutoSave.js        # LocalStorage draft auto-save
@@ -321,6 +324,7 @@ Uses the shared Kanai Supabase instance with `csr_` prefixed tables to avoid con
 | `csr_pay_period_summaries` | Aggregated pay period data |
 | `ghl_user_mapping` | Maps `employee_id` to `ghl_user_id` for API lookups |
 | `ghl_daily_pipeline_summary` | Cached daily pipeline snapshots per CSR |
+| `weekly_reports` | Stored weekly executive reports (auto-generated Monday mornings) |
 
 ### Bonus Tracking Columns (on `csr_eod_reports`)
 
@@ -347,6 +351,10 @@ Uses the shared Kanai Supabase instance with `csr_` prefixed tables to avoid con
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server-side only) |
 | `GHL_API_KEY` | GoHighLevel API key (pit-* format) |
 | `GHL_LOCATION_ID` | GoHighLevel location ID |
+| `MANAGER_PHONE_NUMBER` | Manager phone for SMS alerts |
+| `OWNER_PHONE_NUMBER` | Owner phone for weekly report SMS |
+| `CRON_SECRET` | Vercel cron authentication |
+| `WORKIZ_API_TOKEN` | Workiz API token for revenue sync |
 
 ### Client-side (Vite)
 
@@ -373,6 +381,15 @@ npx vercel --prod --yes
 ```
 
 Environment variables are configured in the Vercel project settings.
+
+## Cron Jobs
+
+| Schedule (HST) | Endpoint | Purpose |
+|---|---|---|
+| Daily 7:30 AM | `/api/csr/estimates-digest` | SMS open estimate count per tech to manager |
+| Daily 4:30 PM | `/api/csr/submission-reminder` | SMS each CSR who hasn't submitted + manager summary |
+| Daily 11 PM | `/api/workiz/revenue-sync` | Backfill $0 revenue on jobs booked from Workiz |
+| Monday 7 AM | `/api/reports/weekly-executive` | Auto-generate weekly executive report, SMS owner with link |
 
 ## API Endpoints
 
@@ -459,3 +476,26 @@ Returns pipeline stage data, stale lead detection with contact attempt counts, a
 ### `GET /api/ghl/test`
 
 Health check for GHL API connectivity.
+
+### `GET /api/csr/submission-reminder`
+
+Daily CSR submission check and SMS reminders. Texts each CSR who hasn't submitted their EOD report, plus sends a manager summary.
+
+### `GET /api/csr/estimates-digest`
+
+Morning open estimates digest via SMS. Sends the manager a per-tech count of open estimates.
+
+### `GET /api/workiz/revenue-sync`
+
+Nightly revenue backfill from Workiz. Updates $0-revenue booked jobs with actual revenue from Workiz.
+
+### `GET /api/reports/weekly-executive`
+
+Weekly executive report generator. Auto-generates the weekly report on Monday mornings and sends the owner an SMS with a link.
+
+### `GET /api/reports/view`
+
+Weekly report HTML viewer. Renders a stored weekly executive report.
+
+**Query params:**
+- `week` (required) — YYYY-MM-DD (Monday of the report week)

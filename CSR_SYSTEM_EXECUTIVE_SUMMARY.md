@@ -177,3 +177,27 @@ The system provides data to answer key weekly executive questions including:
 - Truck team hours, fuel costs, disposal costs, and labor costs (from the companion Field Supervisor EOD Form)
 
 A sample weekly executive report for the week of 3/8–3/14 is available at `WEEKLY_EXECUTIVE_REPORT_3-8_to_3-14.md`.
+
+---
+
+## Automated Notifications & Dashboard Features
+
+### Daily Automated SMS Alerts
+
+The system sends automated text messages to keep management informed without logging in:
+
+| Time (HST) | Alert | Recipient |
+|---|---|---|
+| 7:30 AM | **Open Estimates Digest** — Per-tech count of open estimates needing follow-up | Manager |
+| 4:30 PM | **Submission Reminder** — Individual text to each CSR who hasn't submitted their EOD report, plus a summary to management | Each missing CSR + Manager |
+| 11 PM | **Revenue Sync** — Silently backfills $0-revenue booked jobs with actual Workiz revenue (no SMS, background sync) | N/A |
+
+### Weekly Executive Report (Auto-Generated)
+
+Every Monday at 7 AM HST, the system automatically generates a weekly executive report covering the prior week and sends the owner an SMS with a direct link to view it. Reports are stored in the database (`weekly_reports` table) and accessible anytime via `/api/reports/view?week=YYYY-MM-DD`.
+
+### New Dashboard Components
+
+- **CSR Leaderboard** — Ranked comparison of CSR performance across key metrics (booking rate, speed-to-lead, revenue)
+- **Lead Source Breakdown** — Revenue attribution by lead source, showing which marketing channels generate the most booked revenue
+- **Pipeline Dashboard** — Visual funnel from inbound leads through to completed revenue, showing conversion rates at each stage
