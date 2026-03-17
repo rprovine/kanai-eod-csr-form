@@ -37,13 +37,32 @@ GHL IVR calls (type 24) don't include a `userId` field, so there's no way to att
 
 ### How Dispositions Work
 
-Dispositions are derived from GHL pipeline stage changes that occurred on the report date:
+Dispositions are derived from GHL pipeline stage changes that occurred on the report date. The mapping is evaluated in order (first match wins):
 
-- **Booked:** Stages containing "book", "schedul", "won", "approved", "submitted"
-- **Quoted:** Stages containing "quot", "estimate", "proposal", "agreement sent"
-- **Follow-up:** Stages containing "contacted", "conversation", "nurture", "follow"
-- **Not Qualified:** Stages containing "non-qualified", "not qualified", "unqualified"
-- **Lost:** Stages containing "lost", "declined", "cancel"
+1. **Estimate Scheduled** → **Booked** (CSR got the lead on the schedule)
+2. **Booked:** Stages containing "book", "won", "approved"
+3. **Lost:** Stages containing "lost", "declined", "cancel"
+4. **Not Qualified:** Stages containing "non-qualified", "not qualified", "unqualified"
+5. **Estimate Completed** → **Follow-Up** (needs final disposition: Booked or Lost)
+6. **Quoted:** Stages containing "quot", "estimate", "proposal", "agreement sent", "rental agreement"
+7. **Follow-up:** Stages containing "contacted", "conversation", "nurture", "follow"
+8. **Catch-all:** Any other stage change (except "new lead") → Follow-Up
+
+### Current Pipeline Stage Mapping (1 - LEADS)
+
+| GHL Stage | Disposition | In Booking Rate? |
+|---|---|---|
+| New Lead | (skipped) | No |
+| Contacted | Follow-Up | Denominator |
+| JR - Onsite Estimate Scheduled | Booked | Numerator + Denominator |
+| JR - Onsite Estimate Completed | Follow-Up | Denominator |
+| DR - Dumpster Quote Given | Quoted | Denominator |
+| DR - Rental Agreement Sent | Quoted | Denominator |
+| JR Booked | Booked | Numerator + Denominator |
+| JR Lost | Lost | Denominator |
+| DR Booked | Booked | Numerator + Denominator |
+| DR Lost | Lost | Denominator |
+| Non-Qualified Lead | Not Qualified | Excluded |
 
 ### Booking Rate Formula
 
@@ -64,6 +83,17 @@ Booking Rate = Booked / (Booked + Quoted + Follow-up + Lost)
 7. Maps to an enum bucket: under 5 min, 5-10 min, 10-15 min, over 15 min
 
 **Shift hours filter:** Defaults to 8:00-16:30 HST. Only inbound messages that arrive during shift hours are counted. The Refresh button passes the CSR's entered shift times for accuracy.
+
+### Follow-Up Policy & Stale Lead Detection
+
+**3-Contact Minimum:** Each lead must be contacted at least 3 times before being moved to Lost (unless booked/won on first contact). Contact attempts are counted as distinct days with at least one outbound message to the contact.
+
+**Stale Lead Detection:** Leads sitting in actionable stages (New Lead, Contacted, Estimate Scheduled/Completed, Quote Given, Agreement Sent, Conversation Active, Nurture) for more than 48 hours without a stage change are flagged in the Pipeline Check section.
+
+The Pipeline Check section shows:
+- Stale lead names, current stage, days since last update, and contact attempt count
+- Gold indicator for leads needing more follow-up (< 3 contacts), green when 3+ reached
+- Red warning for leads moved to Lost with fewer than 3 contact attempts
 
 ### Field Source Badges
 
@@ -260,6 +290,7 @@ Uses the shared Kanai Supabase instance with `csr_` prefixed tables to avoid con
 | `csr_eod_followups` | Child table for follow-up attempt entries |
 | `csr_pay_period_summaries` | Aggregated pay period data |
 | `ghl_user_mapping` | Maps `employee_id` to `ghl_user_id` for API lookups |
+| `ghl_daily_pipeline_summary` | Cached daily pipeline snapshots per CSR |
 
 ### Bonus Tracking Columns (on `csr_eod_reports`)
 
@@ -384,9 +415,16 @@ Auto-fills form fields from GHL data for a given CSR and date.
 
 ### `GET /api/ghl/pipeline`
 
-Returns pipeline stage data for a CSR.
+Returns pipeline stage data, stale lead detection with contact attempt counts, and premature-lost warnings.
 
-**Query params:** `employee_id`, `date` (YYYY-MM-DD)
+**Query params:** `employee_id` (required), `date` (YYYY-MM-DD)
+
+**Response includes:**
+- `stages` — Opportunities grouped by stage name
+- `stale_count` / `stale_leads` — Leads in actionable stages >48 hours with contact attempt counts
+- `premature_lost` — Leads moved to Lost today with <3 contact attempts
+- `min_contact_attempts` — Required minimum (currently 3)
+- `booked_today` / `lost_today` — Today's stage movement counts
 
 ### `GET /api/ghl/test`
 
