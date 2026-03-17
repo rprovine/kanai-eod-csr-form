@@ -49,10 +49,11 @@ Booking Rate = Booked / (Booked + Quoted + Follow-Up + Lost)
 
 ### 3. Follow-Up Enforcement
 
-**3-Contact Minimum Rule:** Every lead must be contacted at least 3 times before it can be marked as Lost. The system:
+**3-Contact Minimum Rule:** Every lead must be contacted at least 3 times before it can be marked as Lost — **unless there's a valid lost reason.** If a customer explicitly declines (price too high, went with a competitor, already got it done, etc.), the CSR can mark the lead as Lost immediately with the reason documented. The system:
 - Counts outbound contact attempts per lead from GHL conversation history
 - Shows the attempt count on every stale lead (e.g., "1/3 contacts")
-- Flags leads moved to Lost with insufficient follow-up in a red warning
+- Flags leads moved to Lost with <3 contacts **and no lost reason** in a red warning
+- Allows early Lost if a documented reason exists (tracked via GHL custom fields)
 
 ### 4. Stale Lead Detection
 

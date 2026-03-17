@@ -71,8 +71,8 @@ export default function PipelineCheckSection({ formData, setField, ghl }) {
             </span>
           </div>
           <p className="text-xs text-slate-400 mb-2">
-            These leads were moved to Lost with fewer than {minAttempts} contact attempts.
-            Each lead must be contacted at least {minAttempts} times before marking as Lost.
+            These leads were moved to Lost with fewer than {minAttempts} contact attempts and no lost reason.
+            Either contact at least {minAttempts} times, or add a valid lost reason (e.g., price too high, went with competitor).
           </p>
           <div className="space-y-1.5">
             {prematureLost.map((lead) => (
@@ -98,7 +98,7 @@ export default function PipelineCheckSection({ formData, setField, ghl }) {
           </div>
           <p className="text-xs text-slate-400 mb-2">
             These leads haven't moved in over 48 hours. Follow up or update to Booked, Lost, or Not Qualified.
-            Minimum {minAttempts} contact attempts required before moving to Lost.
+            Minimum {minAttempts} contact attempts required before Lost — unless a valid lost reason is provided.
           </p>
           <div className="space-y-1.5">
             {staleLeads.map((lead) => (

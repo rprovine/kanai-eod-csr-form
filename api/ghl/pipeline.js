@@ -124,7 +124,24 @@ async function countContactAttempts(contactIds) {
   return results;
 }
 
-// Check leads moved to Lost today — flag those with insufficient contact attempts
+// Extract lost reason from opportunity custom fields
+function getLostReason(opp) {
+  // Check customFields array for lost reason field
+  if (opp.customFields && Array.isArray(opp.customFields)) {
+    for (const cf of opp.customFields) {
+      const key = (cf.key || cf.fieldKey || '').toLowerCase();
+      if (key.includes('lost_reason') || key.includes('lost reason')) {
+        return cf.value || cf.fieldValue || '';
+      }
+    }
+  }
+  // Also check the built-in lostReasonId
+  return opp.lostReasonId ? `reason_id:${opp.lostReasonId}` : '';
+}
+
+// Check leads moved to Lost today
+// Flag those with <3 contacts AND no valid lost reason
+// Leads with a documented lost reason (price, competitor, etc.) can be lost early
 function detectPrematureLost(opportunities, contactAttempts, date) {
   const warnings = [];
   for (const opp of opportunities) {
@@ -135,15 +152,23 @@ function detectPrematureLost(opportunities, contactAttempts, date) {
 
     const contactId = opp.contact?.id || opp.contactId || '';
     const attempts = contactAttempts[contactId]?.attempts || 0;
-    if (attempts < MIN_CONTACT_ATTEMPTS) {
-      warnings.push({
-        id: opp.id,
-        name: opp.contact?.name || opp.contactName || opp.name || '',
-        stage: opp.pipelineStageName || opp.stage || '',
-        attempts,
-        required: MIN_CONTACT_ATTEMPTS,
-      });
-    }
+    const lostReason = getLostReason(opp);
+
+    // 3+ contacts → always OK to mark as Lost
+    if (attempts >= MIN_CONTACT_ATTEMPTS) continue;
+
+    // <3 contacts with a valid lost reason → OK (customer explicitly declined)
+    if (lostReason) continue;
+
+    // <3 contacts with NO lost reason → flag it
+    warnings.push({
+      id: opp.id,
+      name: opp.contact?.name || opp.contactName || opp.name || '',
+      stage: opp.pipelineStageName || opp.stage || '',
+      attempts,
+      required: MIN_CONTACT_ATTEMPTS,
+      hasLostReason: false,
+    });
   }
   return warnings;
 }

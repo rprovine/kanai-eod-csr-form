@@ -86,14 +86,19 @@ Booking Rate = Booked / (Booked + Quoted + Follow-up + Lost)
 
 ### Follow-Up Policy & Stale Lead Detection
 
-**3-Contact Minimum:** Each lead must be contacted at least 3 times before being moved to Lost (unless booked/won on first contact). Contact attempts are counted as distinct days with at least one outbound message to the contact.
+**3-Contact Minimum:** Each lead must be contacted at least 3 times before being moved to Lost. Exceptions:
+- **Booked/won on first contact** — no follow-up needed
+- **Explicit lost reason provided** — a lead can be marked Lost before 3 contacts if a valid reason is documented (e.g., "Price Too High", "Went With Competitor"). Lost reasons are tracked via GHL opportunity custom fields (see `kanai-ghl-lost-reason` project).
+- **No reason + <3 contacts = flagged** — the system warns when a lead is moved to Lost without enough follow-up AND without a documented reason.
+
+Contact attempts are counted as distinct days with at least one outbound message to the contact.
 
 **Stale Lead Detection:** Leads sitting in actionable stages (New Lead, Contacted, Estimate Scheduled/Completed, Quote Given, Agreement Sent, Conversation Active, Nurture) for more than 48 hours without a stage change are flagged in the Pipeline Check section.
 
 The Pipeline Check section shows:
 - Stale lead names, current stage, days since last update, and contact attempt count
 - Gold indicator for leads needing more follow-up (< 3 contacts), green when 3+ reached
-- Red warning for leads moved to Lost with fewer than 3 contact attempts
+- Red warning for leads moved to Lost with <3 contacts and no lost reason
 
 ### Field Source Badges
 
