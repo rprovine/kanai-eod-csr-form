@@ -110,27 +110,30 @@ async function processWebhook(opportunity) {
   console.log(`[WEBHOOK] ${contactName}: opp=${opportunityId} stage=${stageId} assigned=${opportunity.assignedTo}`);
 
   // --- Auto-assignment: no assignedTo ---
+  let autoAssigned = false;
   if (!opportunity.assignedTo && contactId) {
     await handleAutoAssign(opportunityId, contactId, contactName);
-    return 'auto-assigned';
+    autoAssigned = true;
   }
 
   // --- Stage change detection ---
-  if (!stageId) return 'no-stage';
+  if (!stageId) return autoAssigned ? 'auto-assigned' : 'no-stage';
 
   const stageMap = await fetchPipelineStages();
   const stageName = (stageMap[stageId] || '').toLowerCase();
   console.log(`[WEBHOOK] ${contactName}: stage="${stageName}"`);
 
+  const prefix = autoAssigned ? 'auto-assigned+' : '';
+
   if (BOOKED_KEYWORDS.some(kw => stageName.includes(kw))) {
     await handleBooked(opportunity, contactName);
-    return `booked:${stageName}`;
+    return `${prefix}booked:${stageName}`;
   } else if (LOST_KEYWORDS.some(kw => stageName.includes(kw))) {
     await handlePrematureLost(opportunity, contactId, contactName, stageName);
-    return `lost:${stageName}`;
+    return `${prefix}lost:${stageName}`;
   }
 
-  return `stage:${stageName}`;
+  return `${prefix}stage:${stageName}`;
 }
 
 async function handleAutoAssign(opportunityId, contactId, contactName) {
