@@ -554,7 +554,7 @@ function analyzeOpportunities(opportunities, stageMap, date) {
     lost_today: lost.length,
     new_leads_count: newLeads.length,
     total: allOpps.length,
-    opportunities: booked,
+    opportunities: booked, // enriched with Workiz serial numbers later
     dispositions: {
       disp_booked: booked.length,
       disp_quoted: quoted.length,
@@ -628,6 +628,33 @@ export default async function handler(req, res) {
     const messagingMetrics = analyzeMessagingMetrics(messageData.allDateMessages, ghlUserId);
     const speedToLead = calculateSpeedToLead(messageData.allDateMessages, ghlUserId, date, { shiftStartHour, shiftStartMin, shiftEndHour, shiftEndMin });
     const pipelineData = analyzeOpportunities(opportunities, stageMap, date);
+
+    // Enrich booked opportunities with Workiz serial numbers
+    const workizToken = process.env.WORKIZ_API_TOKEN;
+    if (workizToken && pipelineData.opportunities.length > 0) {
+      await Promise.all(pipelineData.opportunities.map(async (opp) => {
+        const uuid = opp.workizJobId || opp.workizLeadId;
+        if (!uuid) return;
+        try {
+          // Try job endpoint first, then lead
+          const endpoint = opp.workizJobId ? 'job' : 'lead';
+          const r = await fetch(`https://api.workiz.com/api/v1/${workizToken}/${endpoint}/get/${uuid}/`);
+          if (r.ok) {
+            const text = await r.text();
+            if (text) {
+              const d = JSON.parse(text);
+              const item = Array.isArray(d.data) ? d.data[0] : d.data;
+              if (item?.SerialId) {
+                opp.jobNumber = String(item.SerialId);
+                opp.revenue = parseFloat(item.SubTotal || item.JobTotalPrice || 0);
+              }
+            }
+          }
+        } catch (err) {
+          // Non-critical — fall back to UUID
+        }
+      }));
+    }
 
     // Build prefill fields
     const fields = {};

@@ -60,12 +60,15 @@ export function useGhlPrefill(setFields) {
           const jobEntries = bookedOpps.map((opp) => {
             const stage = (opp.stage || '').toLowerCase()
             const isDumpster = stage.includes('dr ')
+            // For JR: use Workiz serial number. For DR: leave blank (Docket task # entered manually)
+            const jobNumber = isDumpster ? '' : (opp.jobNumber || '')
             return {
               ...getDefaultJobEntry(),
-              job_number: opp.workizJobId || opp.workizLeadId || '',
+              job_number: jobNumber,
               customer_name: opp.name || '',
               job_type: isDumpster ? 'dumpster_rental' : 'junk_removal',
               system: isDumpster ? 'Docket' : 'Workiz',
+              estimated_revenue: opp.revenue || '',
               scheduled_date: opp.scheduledDate || '',
               lead_source: opp.jobSource || '',
               ghl_pipeline_updated: true,
