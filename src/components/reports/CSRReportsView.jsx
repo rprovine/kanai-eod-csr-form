@@ -407,10 +407,12 @@ export default function CSRReportsView() {
             <div className="p-4 rounded-xl bg-gradient-to-br from-violet-600 to-violet-800 text-white">
               <div className="flex items-center gap-2 mb-2">
                 <Target className="w-4 h-4 opacity-80" />
-                <span className="text-xs font-medium opacity-80">Total Booked</span>
+                <span className="text-xs font-medium opacity-80">Dispositions</span>
               </div>
-              <div className="text-2xl font-bold">{totals.booked}</div>
-              <div className="text-xs opacity-60 mt-1">{totals.jobsBooked} jobs logged</div>
+              <div className="text-2xl font-bold">{totals.booked} booked</div>
+              <div className="text-xs opacity-60 mt-1">
+                {totals.quoted} quoted / {totals.followup} follow-up / {totals.lost} lost
+              </div>
             </div>
 
             <div className="p-4 rounded-xl bg-gradient-to-br from-amber-600 to-amber-800 text-white">
@@ -533,6 +535,9 @@ export default function CSRReportsView() {
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">Out</th>
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">Msgs</th>
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">Booked</th>
+                    <th className="text-center py-3 px-3 text-slate-400 font-medium">Quoted</th>
+                    <th className="text-center py-3 px-3 text-slate-400 font-medium">Follow-up</th>
+                    <th className="text-center py-3 px-3 text-slate-400 font-medium">Lost</th>
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">Book %</th>
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">Miss %</th>
                     <th className="text-center py-3 px-3 text-slate-400 font-medium">STL</th>
@@ -555,6 +560,9 @@ export default function CSRReportsView() {
                         <td className="py-3 px-3 text-center text-slate-300">{r.total_outbound_calls || 0}</td>
                         <td className="py-3 px-3 text-center text-slate-300">{msgsTotal || '--'}</td>
                         <td className="py-3 px-3 text-center text-slate-100 font-semibold">{r.disp_booked || 0}</td>
+                        <td className="py-3 px-3 text-center text-amber-400">{r.disp_quoted || 0}</td>
+                        <td className="py-3 px-3 text-center text-sky-400">{r.disp_followup_required || 0}</td>
+                        <td className="py-3 px-3 text-center text-red-400">{r.disp_lost || 0}</td>
                         <td className="py-3 px-3 text-center">
                           <span className={`font-semibold ${r.tier.color}`}>{r.bookingRate}%</span>
                         </td>
@@ -593,6 +601,9 @@ export default function CSRReportsView() {
                     <td className="py-3 px-3 text-center text-slate-200">{totals.outbound}</td>
                     <td className="py-3 px-3 text-center text-slate-200">{totals.msgsSent + totals.msgsReceived}</td>
                     <td className="py-3 px-3 text-center text-slate-100">{totals.booked}</td>
+                    <td className="py-3 px-3 text-center text-amber-400">{totals.quoted}</td>
+                    <td className="py-3 px-3 text-center text-sky-400">{totals.followup}</td>
+                    <td className="py-3 px-3 text-center text-red-400">{totals.lost}</td>
                     <td className="py-3 px-3 text-center text-kanai-blue-light">{avgBookingRate}%</td>
                     <td className="py-3 px-3 text-center text-slate-200">{avgMissedRate}%</td>
                     <td className="py-3 px-3 text-center text-slate-200">{avgStl != null ? `${avgStl}m` : '--'}</td>
