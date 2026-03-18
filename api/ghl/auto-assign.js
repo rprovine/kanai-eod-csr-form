@@ -154,7 +154,7 @@ export default async function handler(req, res) {
           {
             method: 'PUT',
             headers: ghlHeaders(),
-            body: JSON.stringify({ assigned_to: assignToUserId }),
+            body: JSON.stringify({ assignedTo: assignToUserId }),
           }
         );
 
