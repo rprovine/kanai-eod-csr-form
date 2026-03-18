@@ -3,6 +3,13 @@ import { supabaseAdmin } from '../_lib/supabase-admin.js';
 const GHL_API_BASE = 'https://services.leadconnectorhq.com';
 const MIN_CONTACT_ATTEMPTS = 3;
 
+function toHawaiiDate(isoStr) {
+  if (!isoStr) return null;
+  const d = new Date(isoStr);
+  if (isNaN(d)) return null;
+  return d.toLocaleDateString('en-CA', { timeZone: 'Pacific/Honolulu' });
+}
+
 // Fetch opportunities from GHL API v2
 async function fetchGhlOpportunities(pipelineId, assignedTo) {
   const apiKey = process.env.GHL_API_KEY;
@@ -147,7 +154,7 @@ function detectPrematureLost(opportunities, contactAttempts, date) {
   const warnings = [];
   for (const opp of opportunities) {
     const stageName = (opp.pipelineStageName || '').toLowerCase();
-    const lastChange = (opp.lastStageChangeAt || opp.dateUpdated || '').split('T')[0];
+    const lastChange = toHawaiiDate(opp.lastStageChangeAt || opp.dateUpdated);
     if (lastChange !== date) continue;
     if (!stageName.includes('lost') && !stageName.includes('declined')) continue;
 
@@ -248,7 +255,7 @@ export default async function handler(req, res) {
     let lostToday = 0;
     if (date) {
       for (const opp of opportunities) {
-        const updateDate = (opp.lastStageChangeAt || opp.dateUpdated || '').split('T')[0];
+        const updateDate = toHawaiiDate(opp.lastStageChangeAt || opp.dateUpdated);
         if (updateDate !== date) continue;
         const stage = (opp.pipelineStageName || '').toLowerCase();
         if (stage.includes('book') || stage.includes('won') || stage.includes('estimate scheduled')) bookedToday++;
@@ -264,7 +271,7 @@ export default async function handler(req, res) {
     }
     if (date) {
       for (const opp of opportunities) {
-        const updateDate = (opp.lastStageChangeAt || opp.dateUpdated || '').split('T')[0];
+        const updateDate = toHawaiiDate(opp.lastStageChangeAt || opp.dateUpdated);
         const stage = (opp.pipelineStageName || '').toLowerCase();
         if (updateDate === date && (stage.includes('lost') || stage.includes('declined'))) {
           const cid = opp.contact?.id || opp.contactId;

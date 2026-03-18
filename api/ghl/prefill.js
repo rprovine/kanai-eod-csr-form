@@ -463,7 +463,7 @@ function analyzeOpportunities(opportunities, stageMap, date) {
     const stageL = stageName.toLowerCase();
     const contactName = opp.contact?.name || opp.name || '';
     const value = parseFloat(opp.monetaryValue || 0);
-    const lastChange = (opp.lastStageChangeAt || opp.updatedAt || '').split('T')[0];
+    const lastChange = toHawaiiDate(opp.lastStageChangeAt || opp.updatedAt);
 
     const entry = {
       name: contactName,
@@ -665,7 +665,7 @@ export default async function handler(req, res) {
     for (const opp of opportunities) {
       const stageName = stageMap[opp.pipelineStageId] || opp.pipelineStageName || '';
       const stageL = stageName.toLowerCase();
-      const lastChange = (opp.lastStageChangeAt || opp.updatedAt || '').split('T')[0];
+      const lastChange = toHawaiiDate(opp.lastStageChangeAt || opp.updatedAt);
       if (lastChange !== date) continue;
       const entry = { id: opp.id, contactId: opp.contact?.id || opp.contactId, name: opp.contact?.name || opp.name || '', stage: stageName };
 
