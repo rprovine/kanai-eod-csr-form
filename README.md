@@ -21,21 +21,35 @@ When a CSR selects their name and report date, the system automatically pulls da
 | Category | Auto-Filled? | Source |
 |---|---|---|
 | Outbound calls | Yes | GHL Messages Export API |
-| Inbound calls | **No** -- manual entry (GHL IVR calls lack per-CSR attribution) |
-| Missed calls | **No** -- manual entry (same IVR attribution issue) |
-| Missed call rate | Auto-calculated from manual inbound + missed entries |
+| Inbound calls | Yes | GHL Messages Export API (total location inbound) |
+| Missed calls | Yes | GHL Messages Export API (total location missed) |
+| Missed call rate | Auto-calculated from inbound + missed |
 | SMS sent/received | Yes | GHL Messages Export API (type 2) |
 | Facebook sent/received | Yes | GHL Messages Export API (type 11) |
 | Instagram sent/received | Yes | GHL Messages Export API (type 18) |
 | Speed-to-lead | Yes (median, per-channel breakdown) | Calculated from conversation response gaps |
 | Dispositions | Yes (booked, quoted, follow-up, not qualified, lost) | GHL Opportunities API — attributed by conversation activity, not GHL assignment |
-| Jobs Booked | Yes (customer name, job type, system) | GHL Opportunities API (booked opps). CSR adds Workiz job # manually. |
+| Jobs Booked | Yes (customer name, job type, system, Workiz job #, revenue, scheduled date) | GHL Opportunities API + Workiz API. JR jobs get Workiz serial number auto-resolved. DR jobs leave job # blank for Docket task # entry. |
 | Pipeline context | Yes (new leads, stale, booked/lost counts) | GHL Opportunities API |
 | Lead activity log | Yes (auto-logged on prefill) | Tracks every CSR interaction per lead for multi-CSR attribution |
 
-### Why Inbound/Missed Calls Are Manual
+### Inbound/Missed Calls (Location Totals)
 
-GHL IVR calls (type 24) don't include a `userId` field, so there's no way to attribute which CSR answered or missed a specific inbound call. The API only knows location-wide totals. To keep per-CSR metrics accurate, inbound and missed calls are entered manually.
+GHL IVR calls (type 24) don't include a `userId` field, so per-CSR attribution isn't possible. The system uses **total location inbound** and **total location missed** counts from GHL. A call is counted as missed if its duration is under 5 seconds or its status is `no-answer` or `busy`.
+
+### Opportunity Auto-Assignment
+
+The system automatically assigns GHL opportunities to CSRs based on conversation activity via the `/api/ghl/auto-assign` cron endpoint:
+
+1. Fetches all unassigned opportunities (deduplicated to prevent pagination cycling)
+2. For each, finds the linked conversation and looks for the first outbound message from a known CSR
+3. Assigns the opportunity to that CSR using the GHL `assignedTo` field
+
+**Schedule:**
+- Every 30 minutes during business hours (8am-6pm HST)
+- Every 5 minutes from 4:00-4:30pm HST (EOD form submission window)
+
+**Why:** GHL doesn't auto-assign opportunities to the CSR who responds. Without this, the prefill can't filter opportunities by CSR since `assignedTo` would be null.
 
 ### CSR Attribution (Lead Activity Log)
 
@@ -137,12 +151,20 @@ Each auto-filled field shows a source badge in the UI (`GHL`, `GHL Pipeline`, et
 
 Revenue is tied back to CSRs through Workiz job numbers:
 
-1. **GHL auto-populates** the Jobs Booked section with customer name and job type from booked opportunities
-2. **CSR enters the Workiz job number** — the only manual step required
-3. **Reports view** cross-references job numbers against `junk_removal_jobs` (field supervisor EOD data) for actual completed revenue
-4. **Fallback:** If the field team hasn't reported yet, uses CSR-entered estimated revenue
+1. **GHL auto-populates** the Jobs Booked section with customer name, job type, scheduled date, and Workiz job number
+2. **Workiz serial number lookup:** GHL stores Workiz UUIDs (e.g., `E5SA6J`) in custom fields. The prefill endpoint resolves these to human-readable serial numbers (e.g., `10767`) via the Workiz API.
+3. **JR jobs** get the Workiz serial number and revenue auto-filled
+4. **DR jobs** leave the job number blank — CSR enters the Docket task number (e.g., `#934`) manually since there is no Docket API
+5. **Reports view** cross-references job numbers against `junk_removal_jobs` (field supervisor EOD data) for actual completed revenue
+6. **Fallback:** If the field team hasn't reported yet, uses Workiz/CSR-entered estimated revenue
 
-This connects the CSR who booked the lead to the actual job revenue once the field team completes and reports it. Dumpster rental revenue is not tracked yet (no Docket integration).
+**GHL Custom Fields used:**
+| Field ID | Field Name | Usage |
+|---|---|---|
+| `EILH2dteMrekSHTjbzOR` | Workiz Job ID | UUID resolved to Workiz serial # |
+| `YcLhZO3aQtXAANTY0P9f` | Workiz Lead ID | Fallback UUID if no Job ID |
+| `hdGeah9nPBb5ipGnzRv5` | Start Date | Scheduled date for the job |
+| `MAlXRZPVHa2b5YONicGz` | Job Source | Lead source |
 
 ## Form Sections
 
@@ -152,9 +174,9 @@ The EOD report has 14 sections:
 |---|---|---|
 | 1 | Shift Info | CSR name, date, shift start/end times |
 | 2 | Communications | Checklist confirming all channels were covered |
-| 3 | Call & Messaging Metrics | Calls (manual) + SMS/FB/IG counts (auto-filled from GHL) |
+| 3 | Call & Messaging Metrics | Calls (auto-filled from GHL location totals) + SMS/FB/IG counts (auto-filled from GHL) |
 | 4 | Dispositions | Call outcome categorization (auto-filled from GHL pipeline) |
-| 5 | Jobs Booked | Auto-populated from GHL booked opps. CSR adds Workiz job # for revenue tracking. |
+| 5 | Jobs Booked | Auto-populated from GHL booked opps with Workiz serial # (JR) or blank for Docket task # (DR). Revenue auto-filled from Workiz when available. |
 | 6 | Emails & Forms | Web form and email submission tracking |
 | 7 | Yelp Leads | Yelp-specific lead tracking |
 | 8 | Follow-Ups | Follow-up attempts with timing, channel, and result |
@@ -170,7 +192,7 @@ The EOD report has 14 sections:
 ### Auto-Calculated KPIs
 
 - **Booking Rate** -- Booked / (Booked + Quoted + Follow-Up + Lost). Non-qualified excluded.
-- **Missed Call Rate** -- Missed / Total Inbound (target: under 10%). Calculated from manual entries.
+- **Missed Call Rate** -- Missed / Total Inbound (target: under 10%). Auto-filled from GHL location totals.
 - **Speed-to-Lead** -- Median response time from GHL conversations (target: under 5 min)
 - **Follow-Up Completion** -- Completed / Total follow-ups (target: 100%)
 - **Bonus Eligibility** -- All 3 activity minimums must be met
@@ -267,11 +289,22 @@ Rule: If it's a dumpster can, it goes in Docket. Everything else goes in Workiz.
 kanai-eod-csr-form/
 ├── api/                          # Vercel serverless functions
 │   ├── _lib/
-│   │   └── supabase-admin.js     # Supabase admin client (service role)
-│   └── ghl/
-│       ├── prefill.js            # GHL data prefill endpoint
-│       ├── pipeline.js           # GHL pipeline status endpoint
-│       └── test.js               # GHL API test endpoint
+│   │   ├── supabase-admin.js     # Supabase admin client (service role)
+│   │   ├── workiz-client.js      # Workiz API client (job lookup by number)
+│   │   └── ghl-notify.js         # GHL contact/SMS notification helpers
+│   ├── ghl/
+│   │   ├── prefill.js            # GHL data prefill endpoint (calls, messages, pipeline, Workiz lookup)
+│   │   ├── pipeline.js           # GHL pipeline status endpoint (stale leads, premature lost)
+│   │   ├── auto-assign.js        # Cron: assign unassigned opportunities to CSRs
+│   │   └── test.js               # GHL API health check
+│   ├── csr/
+│   │   ├── submission-reminder.js # Cron: SMS CSRs who haven't submitted
+│   │   └── estimates-digest.js    # Cron: SMS open estimate counts to manager
+│   ├── workiz/
+│   │   └── revenue-sync.js       # Cron: backfill $0 revenue from Workiz
+│   └── reports/
+│       ├── weekly-executive.js   # Cron: auto-generate weekly report + SMS
+│       └── view.js               # HTML viewer for stored weekly reports
 ├── src/
 │   ├── App.jsx                   # Main app with section navigation and submission
 │   ├── components/
@@ -298,7 +331,7 @@ kanai-eod-csr-form/
 │   │   │   ├── BonusTrackingSection.jsx
 │   │   │   └── KPIDashboardSection.jsx
 │   │   └── reports/
-│   │       ├── CSRReportsView.jsx  # Historical reports with filters, pay period summary, CSV export
+│   │       ├── CSRReportsView.jsx  # Historical reports with disposition breakdown, pay period summary, CSV export
 │   │       ├── CSRLeaderboard.jsx  # Ranked CSR performance comparison
 │   │       ├── LeadSourceBreakdown.jsx  # Revenue by lead source
 │   │       └── PipelineDashboard.jsx    # Inbound-to-revenue funnel visualization
@@ -404,6 +437,8 @@ Environment variables are configured in the Vercel project settings.
 
 | Schedule (HST) | Endpoint | Purpose |
 |---|---|---|
+| Every 30 min (8am-6pm) | `/api/ghl/auto-assign` | Assign unassigned GHL opportunities to CSRs by conversation activity |
+| Every 5 min (4:00-4:30pm) | `/api/ghl/auto-assign` | Burst sync during EOD form submission window |
 | Daily 7:30 AM | `/api/csr/estimates-digest` | SMS open estimate count per tech to manager |
 | Daily 4:30 PM | `/api/csr/submission-reminder` | SMS each CSR who hasn't submitted + manager summary |
 | Daily 11 PM | `/api/workiz/revenue-sync` | Backfill $0 revenue on jobs booked from Workiz |
@@ -425,7 +460,9 @@ Auto-fills form fields from GHL data for a given CSR and date.
 ```json
 {
   "fields": {
+    "total_inbound_calls": 36,
     "total_outbound_calls": 12,
+    "missed_calls": 2,
     "total_sms_sent": 8,
     "total_sms_received": 10,
     "total_fb_messages_sent": 5,
@@ -476,7 +513,30 @@ Auto-fills form fields from GHL data for a given CSR and date.
 }
 ```
 
-**Note:** `total_inbound_calls`, `missed_calls`, and `missed_call_rate` are NOT included in the response. Inbound and missed calls are manual entry due to GHL IVR attribution limitations. Missed call rate is calculated client-side.
+**Note:** `total_inbound_calls` and `missed_calls` are location-wide totals (not per-CSR) since GHL IVR calls lack userId attribution. `missed_call_rate` is calculated client-side. The `pipeline.opportunities` array includes Workiz serial numbers resolved from GHL custom field UUIDs.
+
+### `GET /api/ghl/auto-assign`
+
+Assigns unassigned GHL opportunities to CSRs based on first outbound conversation activity. Runs on cron (every 30 min business hours, every 5 min during EOD window) and can be triggered manually.
+
+**Auth:** Requires `CRON_SECRET` bearer token, query param, or referer from the app domain.
+
+**Response:**
+```json
+{
+  "total_unassigned": 15,
+  "checked": 15,
+  "assigned": 8,
+  "results": [
+    { "opportunity": "Robert Rapp", "assignedTo": "Jessica Lopez" }
+  ]
+}
+```
+
+**Notes:**
+- Deduplicates opportunities by ID to handle GHL pagination cycling
+- `maxDuration: 120s` configured in Vercel to handle large backlogs
+- Rate-limited at 200ms between API calls
 
 ### `GET /api/ghl/pipeline`
 
