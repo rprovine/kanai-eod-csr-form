@@ -62,13 +62,13 @@ export default function CallMetricsSection({ formData, setField, ghl }) {
       {/* Call Metrics */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div>
-          <Label>Inbound Calls</Label>
+          <Label source={getSource('total_inbound_calls')}>Inbound Calls</Label>
           <NumberInput
             value={formData.total_inbound_calls}
             onChange={(v) => setField('total_inbound_calls', v)}
             placeholder="0"
           />
-          <p className="text-[11px] text-slate-500 mt-1">Manual entry</p>
+          <DiscrepancyWarning discrepancy={getDiscrep('total_inbound_calls', formData.total_inbound_calls)} />
         </div>
         <div>
           <Label source={getSource('total_outbound_calls')}>Outbound Calls</Label>
@@ -80,13 +80,13 @@ export default function CallMetricsSection({ formData, setField, ghl }) {
           <DiscrepancyWarning discrepancy={getDiscrep('total_outbound_calls', formData.total_outbound_calls)} />
         </div>
         <div>
-          <Label>Missed Calls</Label>
+          <Label source={getSource('missed_calls')}>Missed Calls</Label>
           <NumberInput
             value={formData.missed_calls}
             onChange={(v) => setField('missed_calls', v)}
             placeholder="0"
           />
-          <p className="text-[11px] text-slate-500 mt-1">Manual entry</p>
+          <DiscrepancyWarning discrepancy={getDiscrep('missed_calls', formData.missed_calls)} />
         </div>
       </div>
 

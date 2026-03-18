@@ -158,10 +158,16 @@ function analyzeCallMessages(userCalls, totalLocationInbound, allDateMessages, g
 
   let inbound = 0;
   let missed = 0;
+  let totalLocationMissed = 0;
   const countedInbound = new Set();
 
   for (const msg of allDateMessages) {
     if ((msg.type === 1 || msg.type === 24) && msg.direction === 'inbound') {
+      // Track location-wide missed calls
+      if (msg.duration < 5 || msg.status === 'no-answer' || msg.status === 'busy') {
+        totalLocationMissed++;
+      }
+
       const convId = msg.conversationId;
       // Attribute to CSR if they had activity in this conversation OR it's assigned to them
       if (activeConversations.has(convId) || assignedConversationIds.has(convId)) {
@@ -177,7 +183,7 @@ function analyzeCallMessages(userCalls, totalLocationInbound, allDateMessages, g
     }
   }
 
-  return { inbound, outbound, missed, total_location_inbound: totalLocationInbound };
+  return { inbound, outbound, missed, total_location_inbound: totalLocationInbound, total_location_missed: totalLocationMissed };
 }
 
 // Analyze all messages for messaging metrics (SMS, FB, IG)
@@ -604,10 +610,11 @@ export default async function handler(req, res) {
     fields.total_outbound_calls = callMetrics.outbound;
     sources.total_outbound_calls = 'ghl_calls';
 
-    // Inbound and missed calls: NOT auto-filled. GHL IVR calls don't
-    // have userId attribution, so there's no way to know which CSR
-    // answered (or missed) each call. CSR enters both manually.
-    // Missed call rate is calculated client-side from those entries.
+    // Inbound and missed calls: use total location numbers from GHL
+    fields.total_inbound_calls = callMetrics.total_location_inbound;
+    fields.missed_calls = callMetrics.total_location_missed;
+    sources.total_inbound_calls = 'ghl_calls';
+    sources.missed_calls = 'ghl_calls';
 
     // Messaging metrics (new)
     fields.total_sms_sent = messagingMetrics.total_sms_sent;
