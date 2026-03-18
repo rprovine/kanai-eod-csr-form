@@ -4,7 +4,9 @@ import { getDefaultJobEntry } from '../lib/form-defaults'
 
 // Fields that can be auto-filled from GHL
 const GHL_PREFILL_FIELDS = new Set([
+  'total_inbound_calls',
   'total_outbound_calls',
+  'missed_calls',
   'speed_to_lead',
   'speed_to_lead_minutes',
   'total_sms_sent',
@@ -60,9 +62,12 @@ export function useGhlPrefill(setFields) {
             const isDumpster = stage.includes('dr ')
             return {
               ...getDefaultJobEntry(),
+              job_number: opp.workizJobId || opp.workizLeadId || '',
               customer_name: opp.name || '',
               job_type: isDumpster ? 'dumpster_rental' : 'junk_removal',
               system: isDumpster ? 'Docket' : 'Workiz',
+              scheduled_date: opp.scheduledDate || '',
+              lead_source: opp.jobSource || '',
               ghl_pipeline_updated: true,
               notes: `GHL: ${opp.stage}`,
             }

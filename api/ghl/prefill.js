@@ -461,6 +461,20 @@ async function fetchPipelineStages() {
   }
 }
 
+// GHL custom field IDs for Workiz integration
+const CF_WORKIZ_JOB_ID = 'EILH2dteMrekSHTjbzOR';
+const CF_WORKIZ_LEAD_ID = 'YcLhZO3aQtXAANTY0P9f';
+const CF_JOB_SOURCE = 'MAlXRZPVHa2b5YONicGz';
+const CF_START_DATE = 'hdGeah9nPBb5ipGnzRv5';
+const CF_SERVICE_TYPE = '7bkN5I5XUjtsJ0T3FKKB';
+
+function getCustomField(opp, fieldId) {
+  for (const f of (opp.customFields || [])) {
+    if (f.id === fieldId) return f.fieldValue || f.fieldValueString || '';
+  }
+  return '';
+}
+
 // Analyze opportunities for pipeline metrics and auto-fill dispositions
 // Only opportunities that changed stage TODAY are counted as dispositions
 // Non-qualified leads are tracked separately and excluded from booking rate
@@ -486,6 +500,10 @@ function analyzeOpportunities(opportunities, stageMap, date) {
       value,
       movedAt: opp.lastStageChangeAt || opp.updatedAt,
       ghlId: opp.id,
+      workizJobId: getCustomField(opp, CF_WORKIZ_JOB_ID),
+      workizLeadId: getCustomField(opp, CF_WORKIZ_LEAD_ID),
+      scheduledDate: getCustomField(opp, CF_START_DATE),
+      jobSource: getCustomField(opp, CF_JOB_SOURCE),
     };
 
     if (lastChange === date) {
