@@ -35,54 +35,108 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  // Respond quickly to avoid webhook timeout
   const body = req.body || {};
-  const opportunity = body.opportunity || {};
-  const opportunityId = opportunity.id;
+  const webhookOpp = body.opportunity || {};
+  const webhookContact = body.contact || webhookOpp.contact || {};
+  const opportunityId = webhookOpp.id;
 
   if (!opportunityId) {
     return res.status(200).json({ ok: true, skipped: 'No opportunity ID' });
   }
 
-  // Process asynchronously after acknowledging receipt
-  res.status(200).json({ ok: true, received: true });
-
+  // Fetch full opportunity from GHL API — webhook template vars don't resolve
   try {
-    await processWebhook(body, opportunity);
+    const apiResponse = await fetchOpportunityById(opportunityId);
+    if (!apiResponse) {
+      console.error(`[WEBHOOK] Could not fetch opportunity ${opportunityId}`);
+      return res.status(200).json({ ok: true, error: 'Could not fetch opportunity' });
+    }
+
+    // GHL API nests the opportunity under an "opportunity" key
+    const opp = apiResponse.opportunity || apiResponse;
+
+    // Merge contact info from webhook payload if API response lacks it
+    if (!opp.contact && webhookContact.id) {
+      opp.contact = webhookContact;
+    }
+
+    const result = await processWebhook(opp);
+
+    // Log to Supabase for audit trail
+    if (supabaseAdmin) {
+      await supabaseAdmin.from('webhook_log').insert({
+        source: 'ghl-opportunity',
+        payload: {
+          type: body.type,
+          opportunityId: opp.id,
+          contactName: opp.contact?.name || opp.name,
+          pipelineStageId: opp.pipelineStageId,
+          assignedTo: opp.assignedTo,
+          action: result,
+        },
+        received_at: new Date().toISOString(),
+      }).then(() => {}).catch(() => {});
+    }
   } catch (err) {
-    console.error('webhook-opportunity processing error:', err);
+    console.error('webhook-opportunity error:', err);
+  }
+
+  return res.status(200).json({ ok: true, received: true });
+}
+
+async function fetchOpportunityById(opportunityId) {
+  try {
+    const response = await fetch(
+      `${GHL_API_BASE}/opportunities/${opportunityId}`,
+      { headers: ghlHeaders() }
+    );
+    if (!response.ok) {
+      console.error(`[WEBHOOK] GHL API ${response.status} for ${opportunityId}`);
+      return null;
+    }
+    return await response.json();
+  } catch (err) {
+    console.error(`[WEBHOOK] Fetch failed for ${opportunityId}:`, err);
+    return null;
   }
 }
 
-async function processWebhook(body, opportunity) {
+async function processWebhook(opportunity) {
   const opportunityId = opportunity.id;
-  const contactId = opportunity.contact?.id;
-  const contactName = opportunity.contact?.name || 'Unknown';
+  const contactId = opportunity.contact?.id || opportunity.contactId;
+  const contactName = opportunity.contact?.name || opportunity.name || 'Unknown';
+  const stageId = opportunity.pipelineStageId;
+
+  console.log(`[WEBHOOK] ${contactName}: opp=${opportunityId} stage=${stageId} assigned=${opportunity.assignedTo}`);
 
   // --- Auto-assignment: no assignedTo ---
   if (!opportunity.assignedTo && contactId) {
     await handleAutoAssign(opportunityId, contactId, contactName);
+    return 'auto-assigned';
   }
 
   // --- Stage change detection ---
-  const stageId = opportunity.pipelineStageId;
-  if (!stageId) return;
+  if (!stageId) return 'no-stage';
 
   const stageMap = await fetchPipelineStages();
   const stageName = (stageMap[stageId] || '').toLowerCase();
+  console.log(`[WEBHOOK] ${contactName}: stage="${stageName}"`);
 
   if (BOOKED_KEYWORDS.some(kw => stageName.includes(kw))) {
     await handleBooked(opportunity, contactName);
+    return `booked:${stageName}`;
   } else if (LOST_KEYWORDS.some(kw => stageName.includes(kw))) {
     await handlePrematureLost(opportunity, contactId, contactName, stageName);
+    return `lost:${stageName}`;
   }
+
+  return `stage:${stageName}`;
 }
 
 async function handleAutoAssign(opportunityId, contactId, contactName) {
   if (!supabaseAdmin) return;
 
   try {
-    // Get CSR mappings
     const { data: mappings } = await supabaseAdmin
       .from('ghl_user_mapping')
       .select('employee_id, ghl_user_id, ghl_user_name');
@@ -95,7 +149,6 @@ async function handleAutoAssign(opportunityId, contactId, contactName) {
       ghlUserNames[m.ghl_user_id] = m.ghl_user_name;
     }
 
-    // Find conversation for this contact
     const convParams = new URLSearchParams({
       locationId: process.env.GHL_LOCATION_ID,
       contactId,
@@ -111,7 +164,6 @@ async function handleAutoAssign(opportunityId, contactId, contactName) {
     const conversation = (convData.conversations || [])[0];
     if (!conversation?.id) return;
 
-    // Fetch messages to find first outbound from a known CSR
     const msgResponse = await fetch(
       `${GHL_API_BASE}/conversations/${conversation.id}/messages`,
       { headers: ghlHeaders() }
@@ -133,10 +185,10 @@ async function handleAutoAssign(opportunityId, contactId, contactName) {
 
     const ok = await updateOpportunity(opportunityId, { assignedTo: assignToUserId });
     if (ok) {
-      console.log(`Auto-assigned opportunity ${opportunityId} (${contactName}) to ${ghlUserNames[assignToUserId] || assignToUserId}`);
+      console.log(`[WEBHOOK] Auto-assigned ${contactName} to ${ghlUserNames[assignToUserId] || assignToUserId}`);
     }
   } catch (err) {
-    console.error(`Auto-assign error for opportunity ${opportunityId}:`, err);
+    console.error(`[WEBHOOK] Auto-assign error for ${opportunityId}:`, err);
   }
 }
 
@@ -162,10 +214,10 @@ async function handleBooked(opportunity, contactName) {
         .update({ estimated_revenue: job.revenue })
         .eq('id', rows[0].id);
 
-      console.log(`Updated revenue for job ${job.jobNumber} (${contactName}): $${job.revenue}`);
+      console.log(`[WEBHOOK] Updated revenue for ${job.jobNumber} (${contactName}): $${job.revenue}`);
     }
   } catch (err) {
-    console.error(`Booked handler error for opportunity ${opportunity.id}:`, err);
+    console.error(`[WEBHOOK] Booked handler error for ${opportunity.id}:`, err);
   }
 }
 
@@ -173,7 +225,6 @@ async function handlePrematureLost(opportunity, contactId, contactName, stageNam
   if (!contactId) return;
 
   try {
-    // Count contact attempts (distinct outbound days)
     const convParams = new URLSearchParams({
       locationId: process.env.GHL_LOCATION_ID,
       contactId,
@@ -212,12 +263,12 @@ async function handlePrematureLost(opportunity, contactId, contactName, stageNam
     if (attempts >= 3 || lostReason) return;
 
     const message = `Premature lost alert: "${contactName}" moved to ${stageName} with only ${attempts} contact attempt(s) and no lost reason. Opportunity ID: ${opportunity.id}`;
-    console.log(message);
+    console.log(`[WEBHOOK] ${message}`);
 
     if (MANAGER_PHONE_NUMBER) {
       await sendNotification(MANAGER_PHONE_NUMBER, null, message);
     }
   } catch (err) {
-    console.error(`Premature lost check error for opportunity ${opportunity.id}:`, err);
+    console.error(`[WEBHOOK] Premature lost error for ${opportunity.id}:`, err);
   }
 }

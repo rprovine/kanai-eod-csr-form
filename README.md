@@ -9,7 +9,7 @@ Internal tool for Kanai Junk Removal CSRs to submit daily performance reports. A
 - **Frontend:** React 19 + Vite 7 + Tailwind CSS 4
 - **Backend:** Vercel Serverless Functions (Node.js)
 - **Database:** Supabase (PostgreSQL)
-- **Integrations:** GoHighLevel (GHL) API for CRM data
+- **Integrations:** GoHighLevel (GHL) API for CRM data, Workiz API for revenue, GHL Webhooks for real-time pipeline events
 - **UI:** Custom dark-themed components (Kanai brand colors)
 - **Icons:** Lucide React
 - **Charts:** Recharts
@@ -50,6 +50,30 @@ The system automatically assigns GHL opportunities to CSRs based on conversation
 - Every 5 minutes from 4:00-4:30pm HST (EOD form submission window)
 
 **Why:** GHL doesn't auto-assign opportunities to the CSR who responds. Without this, the prefill can't filter opportunities by CSR since `assignedTo` would be null.
+
+### GHL Opportunity Webhook (Real-Time Pipeline Events)
+
+The system receives real-time webhook notifications from GHL when opportunity pipeline stages change, via a GHL workflow with a "Pipeline Stage Changed" trigger and "Custom Webhook" action.
+
+**Endpoint:** `POST /api/ghl/webhook-opportunity`
+
+**How it works:**
+1. GHL workflow fires on any pipeline stage change, sending the opportunity ID and contact info
+2. The webhook fetches the **full opportunity from the GHL API** (GHL's custom webhook template variables for opportunity fields like `pipeline_stage_id` don't resolve — they return `"null"`)
+3. Resolves the pipeline stage name from the stage ID
+4. Takes action based on the stage:
+   - **Booked stages** (book, won, approved, estimate scheduled) → Updates revenue from Workiz
+   - **Lost stages** (lost, declined) → Checks for premature lost (< 3 contacts, no reason) and sends manager SMS alert
+   - **Unassigned opportunities** → Auto-assigns to the CSR who first responded in the conversation
+5. Logs all webhook events to the `webhook_log` table for audit trail
+
+**GHL Workflow Setup:**
+- **Trigger:** Pipeline Stage Changed
+- **Action:** Custom Webhook (POST to `/api/ghl/webhook-opportunity`)
+- **Allow re-entry:** Enabled (so the same contact triggers on subsequent stage changes)
+- **Payload:** Only `opportunity.id` and `contact.id/name/phone` are needed — all other fields are fetched from the API
+
+**Auth:** `GHL_WEBHOOK_SECRET` via query param, `X-Webhook-Secret` header, or `Authorization` header. Falls back to open access if env var is not set.
 
 ### CSR Attribution (Lead Activity Log)
 
@@ -291,19 +315,31 @@ kanai-eod-csr-form/
 │   ├── _lib/
 │   │   ├── supabase-admin.js     # Supabase admin client (service role)
 │   │   ├── workiz-client.js      # Workiz API client (job lookup by number)
-│   │   └── ghl-notify.js         # GHL contact/SMS notification helpers
+│   │   ├── ghl-client.js         # Shared GHL API client (headers, opportunities, stages, messages, stale/lost detection)
+│   │   ├── ghl-notify.js         # GHL contact/SMS notification helpers
+│   │   └── authorize.js          # Shared auth helper for cron/webhook endpoints
 │   ├── ghl/
 │   │   ├── prefill.js            # GHL data prefill endpoint (calls, messages, pipeline, Workiz lookup)
 │   │   ├── pipeline.js           # GHL pipeline status endpoint (stale leads, premature lost)
 │   │   ├── auto-assign.js        # Cron: assign unassigned opportunities to CSRs
+│   │   ├── webhook-opportunity.js # Webhook: real-time pipeline stage change handler
+│   │   ├── unanswered-lead-check.js # Cron: flag unanswered inbound messages >5min
+│   │   ├── lost-reason-check.js  # Cron: flag premature lost leads
+│   │   ├── followup-sync.js      # Cron: sync overdue follow-ups from GHL tasks
 │   │   └── test.js               # GHL API health check
 │   ├── csr/
 │   │   ├── submission-reminder.js # Cron: SMS CSRs who haven't submitted
-│   │   └── estimates-digest.js    # Cron: SMS open estimate counts to manager
+│   │   ├── estimates-digest.js    # Cron: SMS open estimate counts to manager
+│   │   ├── morning-briefing.js    # Cron: daily CSR briefing SMS (stale leads, new leads)
+│   │   └── shift-handoff.js       # Cron: shift change summary of unworked leads
 │   ├── workiz/
-│   │   └── revenue-sync.js       # Cron: backfill $0 revenue from Workiz
+│   │   ├── revenue-sync.js       # Cron: backfill $0 revenue from Workiz
+│   │   └── webhook.js            # Webhook: receive revenue/status updates from Workiz
+│   ├── docket/
+│   │   └── webhook.js            # Webhook: receive DR task number/status from Docket
 │   └── reports/
 │       ├── weekly-executive.js   # Cron: auto-generate weekly report + SMS
+│       ├── funnel-timing.js      # Conversion funnel timing analysis
 │       └── view.js               # HTML viewer for stored weekly reports
 ├── src/
 │   ├── App.jsx                   # Main app with section navigation and submission
@@ -334,7 +370,9 @@ kanai-eod-csr-form/
 │   │       ├── CSRReportsView.jsx  # Historical reports with disposition breakdown, pay period summary, CSV export
 │   │       ├── CSRLeaderboard.jsx  # Ranked CSR performance comparison
 │   │       ├── LeadSourceBreakdown.jsx  # Revenue by lead source
-│   │       └── PipelineDashboard.jsx    # Inbound-to-revenue funnel visualization
+│   │       ├── PipelineDashboard.jsx    # Inbound-to-revenue funnel visualization
+│   │       ├── TrendCharts.jsx    # Week-over-week booking rate and speed-to-lead trends
+│   │       └── ConversionFunnel.jsx # First contact to booking duration analysis
 │   ├── hooks/
 │   │   ├── useEodForm.js         # Form state management
 │   │   ├── useAutoSave.js        # LocalStorage draft auto-save
@@ -352,7 +390,12 @@ kanai-eod-csr-form/
     └── migrations/
         ├── 20260126000000_initial_schema.sql        # Base schema
         ├── 20260312000000_ghl_messaging_metrics.sql # Messaging + STL columns
-        └── 20260313000000_bonus_tracking.sql        # Accelerators, guardrails, hire_date
+        ├── 20260313000000_bonus_tracking.sql        # Accelerators, guardrails, hire_date
+        ├── 20260317000000_enable_rls_all_tables.sql # RLS policies for all tables
+        ├── 20260317100000_add_weekly_reports.sql     # Weekly report storage
+        ├── 20260317200000_add_lead_activity_log.sql  # Lead activity log for attribution
+        ├── 20260318000000_alerts_and_tracking.sql    # Alerts, schedules, follow-up tracking
+        └── 20260318100000_webhook_log.sql            # Webhook audit log
 ```
 
 ## Database Schema
@@ -376,6 +419,12 @@ Uses the shared Kanai Supabase instance with `csr_` prefixed tables to avoid con
 | `ghl_daily_pipeline_summary` | Cached daily pipeline snapshots per CSR |
 | `weekly_reports` | Stored weekly executive reports (auto-generated Monday mornings) |
 | `lead_activity_log` | Per-CSR lead interaction log for multi-CSR attribution (first_contact, follow_up, booked, lost, etc.) |
+| `webhook_log` | Audit log for incoming webhook events (GHL opportunity stage changes, Workiz, Docket) |
+| `csr_schedules` | CSR shift schedules for morning briefing and handoff alerts |
+| `unanswered_lead_alerts` | Tracking for unanswered inbound message alerts |
+| `premature_lost_alerts` | Tracking for leads moved to Lost with insufficient follow-up |
+| `workiz_ghl_mapping` | Maps Workiz job IDs to GHL opportunity IDs for webhook-driven revenue updates |
+| `ghl_followup_tasks` | Tracks overdue follow-up tasks synced from GHL |
 
 ### Bonus Tracking Columns (on `csr_eod_reports`)
 
@@ -406,6 +455,8 @@ Uses the shared Kanai Supabase instance with `csr_` prefixed tables to avoid con
 | `OWNER_PHONE_NUMBER` | Owner phone for weekly report SMS |
 | `CRON_SECRET` | Vercel cron authentication |
 | `WORKIZ_API_TOKEN` | Workiz API token for revenue sync |
+| `GHL_WEBHOOK_SECRET` | Secret for authenticating GHL webhook calls (optional — open access if not set) |
+| `GHL_PIPELINE_ID` | GHL pipeline ID for filtered opportunity search |
 
 ### Client-side (Vite)
 
@@ -439,8 +490,13 @@ Environment variables are configured in the Vercel project settings.
 |---|---|---|
 | Every 30 min (8am-6pm) | `/api/ghl/auto-assign` | Assign unassigned GHL opportunities to CSRs by conversation activity |
 | Every 5 min (4:00-4:30pm) | `/api/ghl/auto-assign` | Burst sync during EOD form submission window |
+| Every 5 min (business hrs) | `/api/ghl/unanswered-lead-check` | Flag inbound messages unanswered >5 min |
+| Every 10 min (business hrs) | `/api/ghl/lost-reason-check` | Flag leads moved to Lost prematurely |
+| 6x daily | `/api/ghl/followup-sync` | Sync overdue follow-up tasks from GHL |
 | Daily 7:30 AM | `/api/csr/estimates-digest` | SMS open estimate count per tech to manager |
+| Daily 7:45 AM (Mon-Fri) | `/api/csr/morning-briefing` | CSR morning briefing SMS (stale leads, new leads, pipeline) |
 | Daily 4:30 PM | `/api/csr/submission-reminder` | SMS each CSR who hasn't submitted + manager summary |
+| Daily 4:30 PM (Mon-Fri) | `/api/csr/shift-handoff` | Shift handoff summary of unworked leads |
 | Daily 11 PM | `/api/workiz/revenue-sync` | Backfill $0 revenue on jobs booked from Workiz |
 | Monday 7 AM | `/api/reports/weekly-executive` | Auto-generate weekly executive report, SMS owner with link |
 
@@ -566,6 +622,29 @@ Morning open estimates digest via SMS. Sends the manager a per-tech count of ope
 ### `GET /api/workiz/revenue-sync`
 
 Nightly revenue backfill from Workiz. Updates $0-revenue booked jobs with actual revenue from Workiz.
+
+### `POST /api/ghl/webhook-opportunity`
+
+Receives real-time pipeline stage change events from GHL. Triggered by a GHL workflow with "Pipeline Stage Changed" trigger.
+
+**Important:** GHL's custom webhook template variables for opportunity fields (`{{opportunity.pipeline_stage_id}}`, etc.) resolve to `"null"`. The webhook uses only the opportunity ID from the payload and fetches the full opportunity from the GHL API.
+
+**Payload (from GHL workflow):**
+```json
+{
+  "type": "PipelineStageChanged",
+  "contact": { "id": "...", "name": "...", "phone": "..." },
+  "opportunity": { "id": "..." }
+}
+```
+
+**Actions taken:**
+- **Booked stage** → Looks up Workiz job by custom field UUID, updates revenue in `csr_eod_jobs_booked`
+- **Lost stage** → Checks contact attempts (<3) and lost reason; sends manager SMS if premature
+- **Unassigned** → Auto-assigns to first CSR who responded in the conversation
+- **All events** → Logged to `webhook_log` table with resolved stage name and action taken
+
+**Auth:** `GHL_WEBHOOK_SECRET` via query param `?secret=`, header `X-Webhook-Secret`, or `Authorization: Bearer`. Open access if env var not set.
 
 ### `GET /api/reports/weekly-executive`
 

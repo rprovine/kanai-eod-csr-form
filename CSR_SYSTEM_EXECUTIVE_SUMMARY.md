@@ -135,11 +135,13 @@ GoHighLevel (GHL)           Workiz                    Docket
 ├── Phone calls             ├── Junk removal jobs     ├── Dumpster rentals
 ├── SMS / FB / IG           ├── Scheduling            ├── Agreements
 ├── Lead pipeline           ├── Invoicing             ├── Asset tracking
-└── Contact management      └── Payments              └── Dispatch
+├── Contact management      └── Payments              └── Dispatch
+└── Webhook (stage changes)
          │
          ▼
-    CSR EOD Form
-    ├── Auto-fills from GHL
+    CSR EOD Form + Real-Time Webhooks
+    ├── Auto-fills from GHL API
+    ├── Instant pipeline event processing (booked/lost/assign)
     ├── CSR enters job details, follow-ups, notes
     ├── Calculates KPIs and bonus
     └── Stores in Supabase
@@ -148,6 +150,7 @@ GoHighLevel (GHL)           Workiz                    Docket
     Reports Dashboard
     ├── Individual CSR performance
     ├── Company-wide booking rate
+    ├── Trend charts and conversion funnel
     ├── Pay period bonus calculations
     └── CSV export
 ```
@@ -198,8 +201,22 @@ The system sends automated text messages to keep management informed without log
 
 Every Monday at 7 AM HST, the system automatically generates a weekly executive report covering the prior week and sends the owner an SMS with a direct link to view it. Reports are stored in the database (`weekly_reports` table) and accessible anytime via `/api/reports/view?week=YYYY-MM-DD`.
 
+### 9. Real-Time Pipeline Monitoring (Webhook)
+
+The system receives instant notifications from GHL whenever an opportunity changes pipeline stage — no waiting for the nightly sync or CSR's EOD report:
+
+| Event | Automatic Action |
+|---|---|
+| **Lead booked** | Updates revenue from Workiz immediately |
+| **Lead marked Lost** (< 3 contacts, no reason) | Sends manager SMS alert for premature lost lead |
+| **Unassigned opportunity** | Auto-assigns to the CSR who first responded |
+
+All webhook events are logged to an audit table for traceability.
+
 ### New Dashboard Components
 
 - **CSR Leaderboard** — Ranked comparison of CSR performance across key metrics (booking rate, speed-to-lead, revenue)
 - **Lead Source Breakdown** — Revenue attribution by lead source, showing which marketing channels generate the most booked revenue
 - **Pipeline Dashboard** — Visual funnel from inbound leads through to completed revenue, showing conversion rates at each stage
+- **Trend Charts** — Week-over-week booking rate and speed-to-lead trends
+- **Conversion Funnel** — First contact to booking duration analysis
