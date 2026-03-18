@@ -351,56 +351,11 @@ function calculateSpeedToLead(allDateMessages, ghlUserId, date, shiftHours) {
   };
 }
 
-// Fetch ALL opportunities for the location (not filtered by assigned_to)
-// Attribution is determined by conversation activity, not GHL assignment
+// Fetch ALL opportunities for the location using shared client
+// Uses pipeline filtering when GHL_PIPELINE_ID is set to avoid the 100-opp pagination cap
 async function fetchAllOpportunities() {
-  const apiKey = process.env.GHL_API_KEY;
-  const locationId = process.env.GHL_LOCATION_ID;
-  if (!apiKey || !locationId) return [];
-
-  const allOpps = [];
-  const seenIds = new Set();
-  let startAfterId = '';
-
-  for (let page = 0; page < 5; page++) {
-    try {
-      const params = new URLSearchParams({
-        location_id: locationId,
-        limit: '100',
-      });
-      if (startAfterId) params.set('startAfterId', startAfterId);
-
-      const response = await fetch(
-        `${GHL_API_BASE}/opportunities/search?${params}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Version': '2021-07-28',
-          },
-        }
-      );
-
-      if (!response.ok) break;
-      const data = await response.json();
-      const opps = data.opportunities || [];
-      let newCount = 0;
-      for (const opp of opps) {
-        if (!seenIds.has(opp.id)) {
-          seenIds.add(opp.id);
-          allOpps.push(opp);
-          newCount++;
-        }
-      }
-      // Stop if no new results (pagination cycling) or last page
-      if (newCount === 0 || opps.length < 100) break;
-      startAfterId = opps[opps.length - 1].id;
-    } catch (err) {
-      console.error('GHL opportunities fetch error:', err);
-      break;
-    }
-  }
-
-  return allOpps;
+  const { fetchOpportunities } = await import('../_lib/ghl-client.js');
+  return fetchOpportunities({ limit: 10 });
 }
 
 // Filter opportunities to those where this CSR had conversation activity
@@ -728,7 +683,7 @@ export default async function handler(req, res) {
       const stageL = stageName.toLowerCase();
       const lastChange = toHawaiiDate(opp.lastStageChangeAt || opp.updatedAt);
       if (lastChange !== date) continue;
-      const entry = { id: opp.id, contactId: opp.contact?.id || opp.contactId, name: opp.contact?.name || opp.name || '', stage: stageName };
+      const entry = { id: opp.id, contactId: opp.contact?.id || opp.contactId, name: opp.contact?.name || opp.name || '', stage: stageName, leadSource: getCustomField(opp, CF_JOB_SOURCE) };
 
       if (stageL.includes('book') || stageL.includes('estimate scheduled') || stageL.includes('won') || stageL.includes('approved')) {
         dispBuckets.booked.push(entry);
@@ -782,6 +737,7 @@ export default async function handler(req, res) {
           action,
           action_date: date,
           stage_name: e.stage,
+          lead_source: e.leadSource || null,
         });
       }
     }
@@ -798,6 +754,7 @@ export default async function handler(req, res) {
         action: 'first_contact',
         action_date: date,
         stage_name: e.stage,
+        lead_source: e.leadSource || null,
       });
     }
 

@@ -1,6 +1,6 @@
 import { Target } from 'lucide-react'
 
-export default function LeadSourceBreakdown({ jobsBooked, workizRevenue }) {
+export default function LeadSourceBreakdown({ jobsBooked, workizRevenue, totalLeadsBySource }) {
   if (!jobsBooked || jobsBooked.length === 0) return null
 
   // Group jobs by lead_source
@@ -19,6 +19,9 @@ export default function LeadSourceBreakdown({ jobsBooked, workizRevenue }) {
   const sources = Object.values(sourceMap).sort((a, b) => b.revenue - a.revenue)
   const totalJobs = sources.reduce((sum, s) => sum + s.count, 0)
   const totalRevenue = sources.reduce((sum, s) => sum + s.revenue, 0)
+  const totalLeads = totalLeadsBySource
+    ? Object.values(totalLeadsBySource).reduce((s, v) => s + v, 0)
+    : null
 
   // Only show if we have lead sources with data
   const hasLeadSources = sources.some(s => s.source !== 'Unknown')
@@ -37,8 +40,9 @@ export default function LeadSourceBreakdown({ jobsBooked, workizRevenue }) {
             <tr className="border-b border-card-border">
               <th className="text-left py-2 px-3 text-slate-400 font-medium">Lead Source</th>
               <th className="text-center py-2 px-3 text-slate-400 font-medium">Jobs Booked</th>
+              <th className="text-center py-2 px-3 text-slate-400 font-medium">Booking Rate</th>
               <th className="text-right py-2 px-3 text-slate-400 font-medium">Revenue</th>
-              <th className="text-right py-2 px-3 text-slate-400 font-medium">Avg Job Size</th>
+              <th className="text-right py-2 px-3 text-slate-400 font-medium">Avg Revenue</th>
             </tr>
           </thead>
           <tbody>
@@ -46,6 +50,16 @@ export default function LeadSourceBreakdown({ jobsBooked, workizRevenue }) {
               <tr key={s.source} className="border-b border-card-border/50 hover:bg-slate-800/30 transition-colors">
                 <td className="py-3 px-3 text-slate-200 font-medium">{s.source}</td>
                 <td className="py-3 px-3 text-center text-slate-300">{s.count}</td>
+                <td className="py-3 px-3 text-center text-slate-300">
+                  {(() => {
+                    const totalForSource = totalLeadsBySource?.[s.source]
+                    if (totalForSource && totalForSource > 0) {
+                      const rate = Math.round((s.count / totalForSource) * 100)
+                      return <span className={rate >= 60 ? 'text-accent-green font-semibold' : rate >= 40 ? 'text-accent-gold' : 'text-slate-400'}>{rate}%</span>
+                    }
+                    return '--'
+                  })()}
+                </td>
                 <td className="py-3 px-3 text-right text-slate-300">
                   {s.revenue > 0 ? `$${s.revenue.toLocaleString()}` : '--'}
                 </td>
@@ -61,6 +75,11 @@ export default function LeadSourceBreakdown({ jobsBooked, workizRevenue }) {
             <tr className="bg-slate-800/60 font-semibold">
               <td className="py-3 px-3 text-slate-200">Total</td>
               <td className="py-3 px-3 text-center text-slate-100">{totalJobs}</td>
+              <td className="py-3 px-3 text-center text-slate-100">
+                {totalLeads && totalLeads > 0
+                  ? `${Math.round((totalJobs / totalLeads) * 100)}%`
+                  : '--'}
+              </td>
               <td className="py-3 px-3 text-right text-slate-100">
                 {totalRevenue > 0 ? `$${totalRevenue.toLocaleString()}` : '--'}
               </td>

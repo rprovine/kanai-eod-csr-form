@@ -8,6 +8,8 @@ import { DATE_PRESETS, getWeekRange, formatDisplayDate, getCurrentPayPeriod } fr
 import CSRLeaderboard from './CSRLeaderboard'
 import LeadSourceBreakdown from './LeadSourceBreakdown'
 import PipelineDashboard from './PipelineDashboard'
+import TrendCharts from './TrendCharts'
+import ConversionFunnel from './ConversionFunnel'
 
 export default function CSRReportsView() {
   const [dateRange, setDateRange] = useState(() => getWeekRange(0))
@@ -391,6 +393,11 @@ export default function CSRReportsView() {
         <PipelineDashboard totals={totals} />
       )}
 
+      {/* Performance Trends */}
+      {!isLoading && reports.length > 0 && (
+        <TrendCharts reports={enrichedReports} />
+      )}
+
       {/* Summary Cards */}
       {!isLoading && reports.length > 0 && (
         <>
@@ -622,6 +629,9 @@ export default function CSRReportsView() {
 
           {/* Lead Source Breakdown */}
           <LeadSourceBreakdown jobsBooked={jobsBooked} workizRevenue={workizRevenue} />
+
+          {/* Conversion Funnel */}
+          <ConversionFunnel reports={enrichedReports} dateRange={dateRange} />
         </>
       )}
     </div>
