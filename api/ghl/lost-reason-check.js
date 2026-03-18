@@ -105,12 +105,9 @@ export default async function handler(req, res) {
       // Record alert to prevent duplicates
       await supabaseAdmin.from('premature_lost_alerts').insert({
         opportunity_id: warning.id,
-        contact_id: warning.contactId,
         contact_name: warning.name,
-        stage: warning.stage,
         attempts: warning.attempts,
         alert_date: today,
-        created_at: new Date().toISOString(),
       });
     }
 

@@ -105,10 +105,8 @@ export default async function handler(req, res) {
       // Record alert to prevent duplicates
       await supabaseAdmin.from('unanswered_lead_alerts').insert({
         conversation_id: alert.conversationId,
-        contact_id: alert.contactId,
         contact_name: alert.contactName,
         alert_date: today,
-        created_at: new Date().toISOString(),
       });
     }
 

@@ -56,8 +56,7 @@ export default async function handler(req, res) {
     const { data: activityLogs } = await supabaseAdmin
       .from('lead_activity_log')
       .select('contact_id')
-      .eq('activity_date', today)
-      .eq('direction', 'outbound')
+      .eq('action_date', today)
       .in('contact_id', contactIds);
 
     const workedContacts = new Set((activityLogs || []).map((a) => a.contact_id));
