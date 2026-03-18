@@ -66,14 +66,16 @@ export default async function handler(req, res) {
 
     // 2. Fetch all unassigned opportunities from GHL
     const unassignedOpps = [];
+    const seenIds = new Set();
     let page = 0;
     let hasMore = true;
 
     while (hasMore && page < 5) {
+      const lastId = unassignedOpps.length > 0 ? unassignedOpps[unassignedOpps.length - 1].id : '';
       const params = new URLSearchParams({
         location_id: locationId,
         limit: '100',
-        startAfterId: unassignedOpps.length > 0 ? unassignedOpps[unassignedOpps.length - 1].id : '',
+        ...(lastId && { startAfterId: lastId }),
       });
 
       const response = await fetch(
@@ -85,13 +87,19 @@ export default async function handler(req, res) {
       const data = await response.json();
       const opps = data.opportunities || [];
 
+      let newCount = 0;
       for (const opp of opps) {
-        if (!opp.assignedTo) {
-          unassignedOpps.push(opp);
+        if (!seenIds.has(opp.id)) {
+          seenIds.add(opp.id);
+          if (!opp.assignedTo) {
+            unassignedOpps.push(opp);
+          }
+          newCount++;
         }
       }
 
-      hasMore = opps.length === 100;
+      // Stop if pagination is cycling or last page
+      if (newCount === 0 || opps.length < 100) break;
       page++;
     }
 

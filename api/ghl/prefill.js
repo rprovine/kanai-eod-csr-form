@@ -359,6 +359,7 @@ async function fetchAllOpportunities() {
   if (!apiKey || !locationId) return [];
 
   const allOpps = [];
+  const seenIds = new Set();
   let startAfterId = '';
 
   for (let page = 0; page < 5; page++) {
@@ -382,8 +383,16 @@ async function fetchAllOpportunities() {
       if (!response.ok) break;
       const data = await response.json();
       const opps = data.opportunities || [];
-      allOpps.push(...opps);
-      if (opps.length < 100) break;
+      let newCount = 0;
+      for (const opp of opps) {
+        if (!seenIds.has(opp.id)) {
+          seenIds.add(opp.id);
+          allOpps.push(opp);
+          newCount++;
+        }
+      }
+      // Stop if no new results (pagination cycling) or last page
+      if (newCount === 0 || opps.length < 100) break;
       startAfterId = opps[opps.length - 1].id;
     } catch (err) {
       console.error('GHL opportunities fetch error:', err);
