@@ -23,6 +23,7 @@
     { "path": "/api/workiz/revenue-sync", "schedule": "0 9 * * *" },
     { "path": "/api/csr/estimates-digest", "schedule": "30 17 * * *" },
     { "path": "/api/reports/weekly-executive", "schedule": "0 17 * * 0" },
-    { "path": "/api/ghl/auto-assign", "schedule": "0 16,18,20,22,0,2,4 * * *" }
+    { "path": "/api/ghl/auto-assign", "schedule": "0,30 0-1,3-4,18-23 * * *" },
+    { "path": "/api/ghl/auto-assign", "schedule": "0,5,10,15,20,25,30 2 * * *" }
   ]
 }

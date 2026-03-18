@@ -16,7 +16,8 @@ function ghlHeaders() {
  * Logic: For each unassigned opportunity, find who has outbound messages
  * in the linked conversation. The first CSR to respond gets the assignment.
  *
- * Runs on cron (every 2 hours) and can be triggered manually.
+ * Runs on cron (every 30 min during business hours, every 5 min 4:00-4:30pm HST for EOD)
+ * and can be triggered manually.
  */
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
