@@ -2,6 +2,9 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
+  "functions": {
+    "api/ghl/auto-assign.js": { "maxDuration": 120 }
+  },
   "headers": [
     {
       "source": "/api/(.*)",
