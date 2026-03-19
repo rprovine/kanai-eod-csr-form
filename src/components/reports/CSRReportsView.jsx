@@ -3,13 +3,18 @@ import { Calendar, Download, Users, Phone, TrendingUp, Target, CheckCircle2, XCi
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
 import { TABLES } from '../../lib/constants'
 import { calcBookingRate, calcMissedCallRate, getPerformanceTier, calcGuardrailDeductions, calcAcceleratorBonus } from '../../lib/kpi-calculations'
-import { fetchEmployees } from '../../lib/supabase-data'
+import { fetchEmployees, fetchLeadActivityLog, fetchPipelineSummary } from '../../lib/supabase-data'
 import { DATE_PRESETS, getWeekRange, formatDisplayDate, getCurrentPayPeriod } from '../../lib/dateHelpers'
 import CSRLeaderboard from './CSRLeaderboard'
 import LeadSourceBreakdown from './LeadSourceBreakdown'
 import PipelineDashboard from './PipelineDashboard'
 import TrendCharts from './TrendCharts'
 import ConversionFunnel from './ConversionFunnel'
+import LeadConversionMetrics from './LeadConversionMetrics'
+import QualityScorecard from './QualityScorecard'
+import FollowUpBacklog from './FollowUpBacklog'
+import WorkloadDistribution from './WorkloadDistribution'
+import WebhookTimeline from './WebhookTimeline'
 
 export default function CSRReportsView() {
   const [dateRange, setDateRange] = useState(() => getWeekRange(0))
@@ -19,6 +24,8 @@ export default function CSRReportsView() {
   const [jobsBooked, setJobsBooked] = useState([])
   const [workizRevenue, setWorkizRevenue] = useState({}) // job_number → revenue from field supervisor data
   const [employees, setEmployees] = useState([])
+  const [leadActivity, setLeadActivity] = useState([])
+  const [pipelineSummary, setPipelineSummary] = useState([])
   const [isLoading, setIsLoading] = useState(true)
 
   // Load employees on mount
@@ -89,6 +96,15 @@ export default function CSRReportsView() {
       } else {
         setJobsBooked([])
       }
+      // Fetch lead activity log and pipeline summary in parallel
+      const [activity, pipeline] = await Promise.all([
+        fetchLeadActivityLog({ startDate: dateRange.start, endDate: dateRange.end,
+          employeeId: selectedEmployee !== 'all' ? selectedEmployee : undefined }),
+        fetchPipelineSummary({ startDate: dateRange.start, endDate: dateRange.end,
+          employeeId: selectedEmployee !== 'all' ? selectedEmployee : undefined }),
+      ])
+      setLeadActivity(activity)
+      setPipelineSummary(pipeline)
     } catch (err) {
       console.error('Error fetching reports:', err)
       setReports([])
@@ -228,6 +244,20 @@ export default function CSRReportsView() {
     avgStl: csr.stlCount > 0 ? Math.round(csr.totalStl / csr.stlCount * 10) / 10 : null,
     tier: getPerformanceTier(csr.totalBookingRate / csr.reports),
   }))
+
+  // Compute lead counts by source from lead activity log for conversion rates
+  const totalLeadsBySource = useMemo(() => {
+    const counts = {}
+    const seen = new Set()
+    for (const entry of leadActivity) {
+      const key = `${entry.opportunity_id}-${entry.lead_source || 'Unknown'}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      const source = entry.lead_source || 'Unknown'
+      counts[source] = (counts[source] || 0) + 1
+    }
+    return counts
+  }, [leadActivity])
 
   // Export CSV
   const exportCSV = () => {
@@ -390,7 +420,7 @@ export default function CSRReportsView() {
 
       {/* Pipeline Dashboard */}
       {!isLoading && reports.length > 0 && (
-        <PipelineDashboard totals={totals} />
+        <PipelineDashboard totals={totals} pipelineSummary={pipelineSummary} />
       )}
 
       {/* Performance Trends */}
@@ -625,15 +655,30 @@ export default function CSRReportsView() {
           </div>
 
           {/* Per-CSR Leaderboard */}
-          <CSRLeaderboard csrPerformance={csrPerformance} />
+          <CSRLeaderboard csrPerformance={csrPerformance} reportsData={enrichedReports} />
 
           {/* Lead Source Breakdown */}
-          <LeadSourceBreakdown jobsBooked={jobsBooked} workizRevenue={workizRevenue} />
+          <LeadSourceBreakdown jobsBooked={jobsBooked} workizRevenue={workizRevenue} totalLeadsBySource={totalLeadsBySource} />
 
           {/* Conversion Funnel */}
           <ConversionFunnel reports={enrichedReports} dateRange={dateRange} />
+
+          {/* Lead Conversion by CSR */}
+          <LeadConversionMetrics dateRange={dateRange} />
+
+          {/* CSR Workload Distribution */}
+          <WorkloadDistribution dateRange={dateRange} />
+
+          {/* Quality Scorecard */}
+          <QualityScorecard dateRange={dateRange} />
+
+          {/* Follow-Up Backlog */}
+          <FollowUpBacklog />
         </>
       )}
+
+      {/* Webhook Timeline — always visible regardless of report data */}
+      {!isLoading && <WebhookTimeline />}
     </div>
   )
 }

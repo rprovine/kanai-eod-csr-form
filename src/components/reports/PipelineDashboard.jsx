@@ -22,7 +22,7 @@ function ConversionArrow({ from, to, label }) {
   )
 }
 
-export default function PipelineDashboard({ totals }) {
+export default function PipelineDashboard({ totals, pipelineSummary }) {
   const totalDispositions = totals.booked + totals.quoted + totals.followup + totals.lost
 
   if (!totals || totalDispositions === 0) return null
@@ -125,6 +125,36 @@ export default function PipelineDashboard({ totals }) {
           </p>
         </div>
       </div>
+
+      {/* Pipeline Health from ghl_daily_pipeline_summary */}
+      {pipelineSummary && pipelineSummary.length > 0 && (() => {
+        const latest = pipelineSummary[0]
+        return (
+          <div className="mt-4 pt-4 border-t border-card-border">
+            <p className="text-xs text-slate-500 mb-3">Pipeline Health (latest snapshot)</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-slate-800/40 rounded-lg p-3 text-center">
+                <p className="text-xs text-slate-500">New Leads</p>
+                <p className="text-lg font-bold text-kanai-blue-light">{(latest.new_leads_count ?? 0).toLocaleString()}</p>
+              </div>
+              <div className="bg-slate-800/40 rounded-lg p-3 text-center">
+                <p className="text-xs text-slate-500">Stale Leads</p>
+                <p className={`text-lg font-bold ${(latest.stale_leads_count ?? 0) > 0 ? 'text-accent-red' : 'text-slate-300'}`}>
+                  {(latest.stale_leads_count ?? 0).toLocaleString()}
+                </p>
+              </div>
+              <div className="bg-slate-800/40 rounded-lg p-3 text-center">
+                <p className="text-xs text-slate-500">Quoted Pending</p>
+                <p className="text-lg font-bold text-accent-gold">{(latest.quoted_pending ?? 0).toLocaleString()}</p>
+              </div>
+              <div className="bg-slate-800/40 rounded-lg p-3 text-center">
+                <p className="text-xs text-slate-500">Total Pipeline</p>
+                <p className="text-lg font-bold text-slate-200">{(latest.opportunities ?? 0).toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

@@ -51,6 +51,33 @@ export async function fetchReports({ startDate, endDate, employeeId } = {}) {
   return { reports, jobsBooked }
 }
 
+export async function fetchLeadActivityLog({ startDate, endDate, employeeId } = {}) {
+  if (!isSupabaseConfigured()) return []
+  let query = supabase
+    .from('lead_activity_log')
+    .select('*')
+  if (startDate) query = query.gte('action_date', startDate)
+  if (endDate) query = query.lte('action_date', endDate)
+  if (employeeId) query = query.eq('csr_employee_id', employeeId)
+  const { data, error } = await query
+  if (error) { console.error('Error fetching lead activity:', error); return [] }
+  return data || []
+}
+
+export async function fetchPipelineSummary({ startDate, endDate, employeeId } = {}) {
+  if (!isSupabaseConfigured()) return []
+  let query = supabase
+    .from('ghl_daily_pipeline_summary')
+    .select('*')
+    .order('summary_date', { ascending: false })
+  if (startDate) query = query.gte('summary_date', startDate)
+  if (endDate) query = query.lte('summary_date', endDate)
+  if (employeeId) query = query.eq('employee_id', employeeId)
+  const { data, error } = await query
+  if (error) { console.error('Error fetching pipeline summary:', error); return [] }
+  return data || []
+}
+
 export async function saveEodReport(formData, { ghlSuggestions } = {}) {
   if (!isSupabaseConfigured()) {
     console.warn('Supabase not configured — report saved locally only')

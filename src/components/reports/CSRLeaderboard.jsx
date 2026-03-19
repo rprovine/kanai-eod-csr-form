@@ -11,7 +11,27 @@ function MedalIcon({ rank }) {
   )
 }
 
-export default function CSRLeaderboard({ csrPerformance }) {
+function computeRevPerHr(csrName, csrRevenue, reportsData) {
+  if (!reportsData || reportsData.length === 0) return null
+  const csrReports = reportsData.filter(r => {
+    const name = r.csr_employees?.name || ''
+    return name === csrName
+  })
+  let totalHours = 0
+  for (const r of csrReports) {
+    if (r.shift_start && r.shift_end) {
+      const [sh, sm] = r.shift_start.split(':').map(Number)
+      const [eh, em] = r.shift_end.split(':').map(Number)
+      let diff = (eh + em / 60) - (sh + sm / 60)
+      if (diff < 0) diff += 24
+      totalHours += diff
+    }
+  }
+  if (totalHours <= 0) return null
+  return csrRevenue / totalHours
+}
+
+export default function CSRLeaderboard({ csrPerformance, reportsData }) {
   if (!csrPerformance || csrPerformance.length < 2) return null
 
   const sorted = [...csrPerformance].sort((a, b) => b.avgBookingRate - a.avgBookingRate)
@@ -34,6 +54,7 @@ export default function CSRLeaderboard({ csrPerformance }) {
               <th className="text-center py-2 px-2 text-slate-400 font-medium">Booking Rate</th>
               <th className="text-center py-2 px-2 text-slate-400 font-medium">Booked</th>
               <th className="text-center py-2 px-2 text-slate-400 font-medium">Revenue</th>
+              <th className="text-center py-2 px-2 text-slate-400 font-medium">Rev/Hr</th>
               <th className="text-center py-2 px-2 text-slate-400 font-medium">Avg STL</th>
               <th className="text-center py-2 px-2 text-slate-400 font-medium">Tier</th>
             </tr>
@@ -64,6 +85,12 @@ export default function CSRLeaderboard({ csrPerformance }) {
                   </td>
                   <td className="py-3 px-2 text-center text-slate-100 font-semibold">{csr.totalBooked}</td>
                   <td className="py-3 px-2 text-center text-slate-300">${csr.totalRevenue.toLocaleString()}</td>
+                  <td className="py-3 px-2 text-center text-slate-300">
+                    {(() => {
+                      const revHr = computeRevPerHr(csr.name, csr.totalRevenue, reportsData)
+                      return revHr != null ? `$${Math.round(revHr).toLocaleString()}` : '--'
+                    })()}
+                  </td>
                   <td className="py-3 px-2 text-center">
                     {csr.avgStl != null ? (
                       <span className={`font-semibold ${csr.avgStl < 5 ? 'text-accent-green' : csr.avgStl < 10 ? 'text-accent-gold' : 'text-accent-red'}`}>
@@ -131,7 +158,7 @@ export default function CSRLeaderboard({ csrPerformance }) {
                 <div className={`text-right text-sm font-bold mt-1 ${csr.tier.color}`}>{csr.avgBookingRate}%</div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3 text-xs">
+              <div className="grid grid-cols-4 gap-3 text-xs">
                 <div className="text-center">
                   <p className="text-slate-500">Booked</p>
                   <p className="text-slate-200 font-semibold">{csr.totalBooked}</p>
@@ -139,6 +166,15 @@ export default function CSRLeaderboard({ csrPerformance }) {
                 <div className="text-center">
                   <p className="text-slate-500">Revenue</p>
                   <p className="text-slate-200 font-semibold">${csr.totalRevenue.toLocaleString()}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-slate-500">Rev/Hr</p>
+                  <p className="text-slate-200 font-semibold">
+                    {(() => {
+                      const revHr = computeRevPerHr(csr.name, csr.totalRevenue, reportsData)
+                      return revHr != null ? `$${Math.round(revHr).toLocaleString()}` : '--'
+                    })()}
+                  </p>
                 </div>
                 <div className="text-center">
                   <p className="text-slate-500">Avg STL</p>
