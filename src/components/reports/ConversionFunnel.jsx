@@ -3,48 +3,24 @@ import { Clock, Loader2 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from 'recharts'
-import { supabase, isSupabaseConfigured } from '../../lib/supabase'
 
-// GHL pipeline stage ID → name mapping (from Kanai's 1-LEADS pipeline)
-const STAGE_MAP = {
-  '385c8669-3b27-4dd2-8014-d45ec3e0efca': 'New Lead',
-  'd0359468-1622-4a3c-9c62-60cf522ff624': 'Contacted',
-  '17dc9a7f-b22e-4746-b466-496416d355a2': 'Needs Follow-Up',
-  'a4f500f3-c9bc-479d-a4e0-6cffefb31fe6': 'Estimate Scheduled',
-  '90913cea-97c6-4e99-aa7f-1c4f629b5ed3': 'Estimate Completed',
-  '29bff7b4-596c-4458-8530-3bea8cf8a8e3': 'DR Quote Given',
-  '6197ea4f-ec72-45c6-86c7-c1b635728692': 'DR Agreement Sent',
-  '40568a91-8969-4ada-b066-eb144d4ab799': 'JR Booked',
-  'f6bf1393-c911-413a-8635-6e134b7f6dbd': 'JR Lost',
-  'd24bfaad-766e-4f57-9b87-dc40170cfc5b': 'DR Booked',
-  'be3a7102-a3d8-4089-b076-9719029800f6': 'DR Lost',
-  '8eb1f7a5-cb94-484f-87fc-5367b1a02d7d': 'Non-Qualified',
+// Color assignment for stage names by keyword
+function getStageColor(name) {
+  const n = name.toLowerCase()
+  if (n.includes('new lead') || n === 'new') return '#6366f1'
+  if (n.includes('contacted')) return '#3b82f6'
+  if (n.includes('follow')) return '#8b5cf6'
+  if (n.includes('estimate scheduled') || n.includes('discovery')) return '#06b6d4'
+  if (n.includes('estimate completed')) return '#0ea5e9'
+  if (n.includes('quote') || n.includes('proposal')) return '#f59e0b'
+  if (n.includes('agreement') || n.includes('rental')) return '#f97316'
+  if (n.includes('booked') || n.includes('won') || n.includes('activated')) return '#22c55e'
+  if (n.includes('lost') || n.includes('closed lost')) return '#ef4444'
+  if (n.includes('non-qualified') || n.includes('not qualified')) return '#64748b'
+  if (n.includes('nurture') || n.includes('conversation')) return '#a78bfa'
+  if (n.includes('referral')) return '#14b8a6'
+  return '#94a3b8'
 }
-
-const STAGE_COLORS = {
-  'New Lead': '#6366f1',
-  'Contacted': '#3b82f6',
-  'Needs Follow-Up': '#8b5cf6',
-  'Estimate Scheduled': '#06b6d4',
-  'Estimate Completed': '#0ea5e9',
-  'DR Quote Given': '#f59e0b',
-  'DR Agreement Sent': '#f97316',
-  'JR Booked': '#22c55e',
-  'DR Booked': '#10b981',
-  'JR Lost': '#ef4444',
-  'DR Lost': '#dc2626',
-  'Non-Qualified': '#64748b',
-}
-
-// Order stages should appear in the chart
-const STAGE_ORDER = [
-  'New Lead', 'Contacted', 'Needs Follow-Up',
-  'Estimate Scheduled', 'Estimate Completed',
-  'DR Quote Given', 'DR Agreement Sent',
-  'JR Booked', 'DR Booked',
-  'JR Lost', 'DR Lost',
-  'Non-Qualified',
-]
 
 export default function ConversionFunnel({ reports, dateRange }) {
   const [conversionData, setConversionData] = useState(null)
@@ -76,56 +52,27 @@ export default function ConversionFunnel({ reports, dateRange }) {
     fetchFunnel()
   }, [dateRange?.start, dateRange?.end])
 
-  // Fetch live pipeline stage distribution from ghl_daily_pipeline_summary
+  // Fetch live pipeline stage distribution directly from GHL API
   useEffect(() => {
-    if (!isSupabaseConfigured()) return
-
     async function fetchPipeline() {
-      // Get the most recent summary entries (one per CSR)
-      const { data, error } = await supabase
-        .from('ghl_daily_pipeline_summary')
-        .select('opportunities')
-        .order('summary_date', { ascending: false })
-        .limit(10)
+      try {
+        const res = await fetch('/api/ghl/stages')
+        if (!res.ok) return
+        const { stageCounts, totalOpportunities } = await res.json()
+        if (!stageCounts || Object.keys(stageCounts).length === 0) return
 
-      if (error || !data || data.length === 0) return
+        const chartData = Object.entries(stageCounts)
+          .map(([stage, count]) => ({
+            stage,
+            count,
+            fill: getStageColor(stage),
+          }))
+          .sort((a, b) => b.count - a.count)
 
-      // Deduplicate opportunities across CSR summaries
-      const seenIds = new Set()
-      const allOpps = []
-      for (const row of data) {
-        const opps = row.opportunities || []
-        if (!Array.isArray(opps)) continue
-        for (const opp of opps) {
-          if (opp.id && !seenIds.has(opp.id)) {
-            seenIds.add(opp.id)
-            allOpps.push(opp)
-          }
-        }
+        setPipelineStages(chartData)
+      } catch (err) {
+        console.error('Pipeline stages fetch error:', err)
       }
-
-      // Count by stage
-      const stageCounts = {}
-      for (const opp of allOpps) {
-        const stageName = STAGE_MAP[opp.pipelineStageId] || 'Other'
-        stageCounts[stageName] = (stageCounts[stageName] || 0) + 1
-      }
-
-      // Convert to chart data, ordered
-      const chartData = STAGE_ORDER
-        .filter(s => stageCounts[s] > 0)
-        .map(s => ({
-          stage: s,
-          count: stageCounts[s],
-          fill: STAGE_COLORS[s] || '#64748b',
-        }))
-
-      // Add any "Other" stages not in the order
-      if (stageCounts['Other']) {
-        chartData.push({ stage: 'Other', count: stageCounts['Other'], fill: '#64748b' })
-      }
-
-      setPipelineStages(chartData)
     }
 
     fetchPipeline()
