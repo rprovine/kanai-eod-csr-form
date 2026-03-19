@@ -139,7 +139,7 @@ export default function ConversionFunnel({ reports, dateRange }) {
           <p className="text-xs text-slate-400 mb-2">
             Live Pipeline ({totalPipeline} opportunities)
           </p>
-          <div className="h-56">
+          <div style={{ height: Math.max(pipelineStages.length * 36, 200) }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={pipelineStages}
@@ -159,10 +159,10 @@ export default function ConversionFunnel({ reports, dateRange }) {
                   tick={{ fill: '#94a3b8', fontSize: 11 }}
                   axisLine={{ stroke: '#475569' }}
                   tickLine={{ stroke: '#475569' }}
-                  width={120}
+                  width={180}
                 />
                 <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={20}>
+                <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={24}>
                   {pipelineStages.map((entry, index) => (
                     <Cell key={index} fill={entry.fill} />
                   ))}
