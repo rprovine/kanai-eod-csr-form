@@ -1,5 +1,3 @@
-import { useState, useEffect } from 'react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LabelList } from 'recharts'
 import { TrendingUp } from 'lucide-react'
 
 const STAGE_COLORS = {
@@ -24,35 +22,6 @@ function ConversionArrow({ from, to, label }) {
 }
 
 export default function PipelineDashboard({ totals }) {
-  const [liveStats, setLiveStats] = useState(null)
-
-  useEffect(() => {
-    async function fetchLive() {
-      try {
-        const res = await fetch('/api/ghl/stages')
-        if (!res.ok) return
-        const { stageCounts, totalOpportunities } = await res.json()
-        if (!stageCounts) return
-
-        // Compute summary stats from live stage counts
-        const sc = stageCounts
-        const newLeads = (sc['New Lead'] || 0)
-        const contacted = (sc['Contacted'] || 0)
-        const needsFollowUp = (sc['Needs Follow-Up'] || 0)
-        const quoted = (sc['DR - Dumpster Quote Given'] || 0) + (sc['DR - Rental Agreement Sent'] || 0)
-        const estimating = (sc['JR - Onsite Estimate Scheduled'] || 0) + (sc['JR - Onsite Estimate Completed'] || 0)
-        const booked = (sc['JR Booked'] || 0) + (sc['DR Booked'] || 0)
-        const lost = (sc['JR Lost'] || 0) + (sc['DR Lost'] || 0)
-        const activeLeads = newLeads + contacted + needsFollowUp + estimating + quoted
-
-        setLiveStats({ newLeads, activeLeads, quoted, booked, lost, totalOpportunities })
-      } catch (err) {
-        console.error('Pipeline health fetch error:', err)
-      }
-    }
-    fetchLive()
-  }, [])
-
   const totalDispositions = totals.booked + totals.quoted + totals.followup + totals.lost
 
   if (!totals || totalDispositions === 0) return null
@@ -156,34 +125,6 @@ export default function PipelineDashboard({ totals }) {
         </div>
       </div>
 
-      {/* Live Pipeline Health from GHL API */}
-      {liveStats && (
-        <div className="mt-4 pt-4 border-t border-card-border">
-          <p className="text-xs text-slate-500 mb-3">Live Pipeline Health</p>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <div className="bg-slate-800/40 rounded-lg p-3 text-center">
-              <p className="text-xs text-slate-500">New Leads</p>
-              <p className="text-lg font-bold text-kanai-blue-light">{liveStats.newLeads}</p>
-            </div>
-            <div className="bg-slate-800/40 rounded-lg p-3 text-center">
-              <p className="text-xs text-slate-500">Active Leads</p>
-              <p className="text-lg font-bold text-indigo-400">{liveStats.activeLeads}</p>
-            </div>
-            <div className="bg-slate-800/40 rounded-lg p-3 text-center">
-              <p className="text-xs text-slate-500">Quoted/Pending</p>
-              <p className="text-lg font-bold text-accent-gold">{liveStats.quoted}</p>
-            </div>
-            <div className="bg-slate-800/40 rounded-lg p-3 text-center">
-              <p className="text-xs text-slate-500">Booked</p>
-              <p className="text-lg font-bold text-accent-green">{liveStats.booked}</p>
-            </div>
-            <div className="bg-slate-800/40 rounded-lg p-3 text-center">
-              <p className="text-xs text-slate-500">Total Pipeline</p>
-              <p className="text-lg font-bold text-slate-200">{liveStats.totalOpportunities}</p>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
