@@ -420,7 +420,7 @@ export default function CSRReportsView() {
 
       {/* Pipeline Dashboard */}
       {!isLoading && reports.length > 0 && (
-        <PipelineDashboard totals={totals} pipelineSummary={pipelineSummary} />
+        <PipelineDashboard totals={totals} />
       )}
 
       {/* Performance Trends */}
