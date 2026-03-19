@@ -45,6 +45,7 @@ export async function fetchOpportunities(opts = {}) {
   const allOpps = [];
   const seenIds = new Set();
   let startAfterId = '';
+  let startAfter = '';
 
   for (let page = 0; page < maxPages; page++) {
     try {
@@ -56,6 +57,7 @@ export async function fetchOpportunities(opts = {}) {
       if (opts.status) params.set('status', opts.status);
       if (opts.assignedTo) params.set('assigned_to', opts.assignedTo);
       if (startAfterId) params.set('startAfterId', startAfterId);
+      if (startAfter) params.set('startAfter', startAfter);
 
       const response = await fetch(
         `${GHL_API_BASE}/opportunities/search?${params}`,
@@ -65,6 +67,7 @@ export async function fetchOpportunities(opts = {}) {
       if (!response.ok) break;
       const data = await response.json();
       const opps = data.opportunities || [];
+      const meta = data.meta || {};
 
       let newCount = 0;
       for (const opp of opps) {
@@ -76,7 +79,10 @@ export async function fetchOpportunities(opts = {}) {
       }
 
       if (newCount === 0 || opps.length < 100) break;
-      startAfterId = opps[opps.length - 1].id;
+
+      // Use meta for next page cursor
+      startAfterId = meta.startAfterId || opps[opps.length - 1].id;
+      startAfter = meta.startAfter ? String(meta.startAfter) : '';
     } catch (err) {
       console.error('GHL opportunities fetch error:', err);
       break;
