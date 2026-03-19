@@ -149,7 +149,7 @@ export default function PipelineDashboard({ totals, pipelineSummary }) {
               </div>
               <div className="bg-slate-800/40 rounded-lg p-3 text-center">
                 <p className="text-xs text-slate-500">Total Pipeline</p>
-                <p className="text-lg font-bold text-slate-200">{(latest.opportunities ?? 0).toLocaleString()}</p>
+                <p className="text-lg font-bold text-slate-200">{(Array.isArray(latest.opportunities) ? latest.opportunities.length : (latest.opportunities ?? 0)).toLocaleString()}</p>
               </div>
             </div>
           </div>

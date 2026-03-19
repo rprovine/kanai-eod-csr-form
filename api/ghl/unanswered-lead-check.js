@@ -1,7 +1,9 @@
 import { authorize } from '../_lib/authorize.js';
 import { supabaseAdmin } from '../_lib/supabase-admin.js';
-import { fetchRecentMessages, toHawaiiDate } from '../_lib/ghl-client.js';
+import { ghlHeaders, fetchRecentMessages, toHawaiiDate } from '../_lib/ghl-client.js';
 import { sendNotification } from '../_lib/ghl-notify.js';
+
+const GHL_API_BASE = 'https://services.leadconnectorhq.com';
 
 export const maxDuration = 30;
 
@@ -62,10 +64,26 @@ export default async function handler(req, res) {
       });
       if (hasOutboundAfter) continue;
 
+      // Look up contact name from GHL
+      let contactName = 'Unknown';
+      if (mostRecent.contactId) {
+        try {
+          const contactRes = await fetch(
+            `${GHL_API_BASE}/contacts/${mostRecent.contactId}`,
+            { headers: ghlHeaders() }
+          );
+          if (contactRes.ok) {
+            const contactData = await contactRes.json();
+            const c = contactData.contact || contactData;
+            contactName = c.name || c.firstName || c.contactName || 'Unknown';
+          }
+        } catch (e) { /* use fallback */ }
+      }
+
       unanswered.push({
         conversationId: convId,
         contactId: mostRecent.contactId,
-        contactName: mostRecent.contactName || mostRecent.contactId,
+        contactName,
         contactPhone: mostRecent.phone || '',
         messageTime: mostRecent.dateAdded,
       });
