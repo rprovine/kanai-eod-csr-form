@@ -442,12 +442,17 @@ function analyzeOpportunities(opportunities, stageMap, date) {
   const newLeads = [];
   const allOpps = [];
 
+  const allBooked = []; // All currently booked opps (for revenue enrichment)
+
   for (const opp of opportunities) {
     const stageName = stageMap[opp.pipelineStageId] || opp.pipelineStageName || '';
     const stageL = stageName.toLowerCase();
     const contactName = opp.contact?.name || opp.name || '';
     const value = parseFloat(opp.monetaryValue || 0);
     const lastChange = toHawaiiDate(opp.lastStageChangeAt || opp.updatedAt);
+
+    const isBookedStage = stageL.includes('book') || stageL.includes('estimate scheduled')
+        || stageL.includes('won') || stageL.includes('approved');
 
     const entry = {
       name: contactName,
@@ -461,11 +466,14 @@ function analyzeOpportunities(opportunities, stageMap, date) {
       jobSource: getCustomField(opp, CF_JOB_SOURCE),
     };
 
+    // Track ALL currently booked opps regardless of when they moved (for revenue enrichment)
+    if (isBookedStage) {
+      allBooked.push(entry);
+    }
+
     if (lastChange === date) {
       // Booked: JR Booked, DR Booked, Booked, Onsite Estimate Scheduled, Closed Won, etc.
-      // Estimate Scheduled counts as booked — the CSR got the lead on the schedule
-      if (stageL.includes('book') || stageL.includes('estimate scheduled')
-          || stageL.includes('won') || stageL.includes('approved')) {
+      if (isBookedStage) {
         booked.push(entry);
       }
       // Lost: JR Lost, DR Lost, Closed Lost, etc.
@@ -509,7 +517,8 @@ function analyzeOpportunities(opportunities, stageMap, date) {
     lost_today: lost.length,
     new_leads_count: newLeads.length,
     total: allOpps.length,
-    opportunities: booked, // enriched with Workiz serial numbers later
+    // Include ALL booked opps for Workiz revenue enrichment (not just today's)
+    opportunities: allBooked,
     dispositions: {
       disp_booked: booked.length,
       disp_quoted: quoted.length,
@@ -609,6 +618,35 @@ export default async function handler(req, res) {
           // Non-critical — fall back to UUID
         }
       }));
+    }
+
+    // Enrich booked opportunities with Docket task numbers
+    // For DR opportunities without a jobNumber, look up the docket_ghl_mapping table
+    if (pipelineData.opportunities.length > 0) {
+      const drOpps = pipelineData.opportunities.filter(opp => {
+        const stageL = (opp.stage || '').toLowerCase();
+        return !opp.jobNumber && (stageL.includes('dr ') || stageL.includes('dumpster'));
+      });
+
+      if (drOpps.length > 0) {
+        const ghlIds = drOpps.map(o => o.ghlId).filter(Boolean);
+        if (ghlIds.length > 0) {
+          const { data: mappings } = await supabaseAdmin
+            .from('docket_ghl_mapping')
+            .select('docket_task_number, ghl_opportunity_id')
+            .in('ghl_opportunity_id', ghlIds);
+
+          if (mappings && mappings.length > 0) {
+            const mapByOpp = {};
+            for (const m of mappings) mapByOpp[m.ghl_opportunity_id] = m.docket_task_number;
+            for (const opp of drOpps) {
+              if (opp.ghlId && mapByOpp[opp.ghlId]) {
+                opp.jobNumber = mapByOpp[opp.ghlId];
+              }
+            }
+          }
+        }
+      }
     }
 
     // Build prefill fields
