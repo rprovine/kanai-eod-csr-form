@@ -140,6 +140,21 @@ export default async function handler(req, res) {
       return '';
     }
 
+    // Debug: log first opp's custom fields to see format
+    if (bookedOpps.length > 0 && req.query?.debug) {
+      const sample = bookedOpps[0];
+      return res.json({
+        debug: true,
+        sampleOpp: {
+          name: sample.contact?.name || sample.name,
+          stage: sample.pipelineStageName,
+          assignedTo: sample.assignedTo,
+          customFields: sample.customFields,
+        },
+        totalBooked: bookedOpps.length,
+      });
+    }
+
     // Resolve Workiz serial numbers for each opp
     const oppJobMap = []; // { opp, csrName, csrEmployeeId, jobNumber, contactName }
 
