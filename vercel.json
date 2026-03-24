@@ -7,7 +7,8 @@
     "api/ghl/unanswered-lead-check.js": { "maxDuration": 60 },
     "api/csr/morning-briefing.js": { "maxDuration": 120 },
     "api/ghl/lost-reason-check.js": { "maxDuration": 60 },
-    "api/ghl/followup-sync.js": { "maxDuration": 120 }
+    "api/ghl/followup-sync.js": { "maxDuration": 120 },
+    "api/csr/revenue-attribution.js": { "maxDuration": 120 }
   },
   "headers": [
     {

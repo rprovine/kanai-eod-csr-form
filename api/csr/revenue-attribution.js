@@ -39,7 +39,7 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-export const config = { maxDuration: 60 };
+export const config = { maxDuration: 120 };
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -156,18 +156,33 @@ export default async function handler(req, res) {
     }
 
     // Resolve Workiz serial numbers for each opp
-    const oppJobMap = []; // { opp, csrName, csrEmployeeId, jobNumber, contactName }
+    // GHL search API doesn't return custom fields — need to fetch each opp individually
+    const oppJobMap = [];
 
     for (const opp of bookedOpps) {
       const csr = csrByUserId[opp.assignedTo];
       const contactName = opp.contact?.name || opp.name || '';
-      const uuid = getCustomField(opp, CF_WORKIZ_JOB_ID) || getCustomField(opp, CF_WORKIZ_LEAD_ID);
+
+      // Fetch full opportunity to get custom fields
+      let fullOpp = opp;
+      try {
+        const oppRes = await fetch(`${GHL_API_BASE}/opportunities/${opp.id}`, { headers: ghlHeaders() });
+        if (oppRes.ok) {
+          const oppData = await oppRes.json();
+          fullOpp = oppData.opportunity || oppData || opp;
+        }
+        await delay(200);
+      } catch {}
+
+      const workizJobUUID = getCustomField(fullOpp, CF_WORKIZ_JOB_ID);
+      const workizLeadUUID = getCustomField(fullOpp, CF_WORKIZ_LEAD_ID);
+      const uuid = workizJobUUID || workizLeadUUID;
 
       let jobNumber = '';
 
       if (uuid && workizToken) {
         try {
-          const endpoint = getCustomField(opp, CF_WORKIZ_JOB_ID) ? 'job' : 'lead';
+          const endpoint = workizJobUUID ? 'job' : 'lead';
           const r = await fetch(`https://api.workiz.com/api/v1/${workizToken}/${endpoint}/get/${uuid}/`);
           if (r.ok) {
             const text = await r.text();
