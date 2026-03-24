@@ -371,8 +371,13 @@ kanai-eod-csr-form/
 │   │       ├── CSRLeaderboard.jsx  # Ranked CSR performance comparison
 │   │       ├── LeadSourceBreakdown.jsx  # Revenue by lead source
 │   │       ├── PipelineDashboard.jsx    # Inbound-to-revenue funnel visualization
-│   │       ├── TrendCharts.jsx    # Week-over-week booking rate and speed-to-lead trends
-│   │       └── ConversionFunnel.jsx # First contact to booking duration analysis
+│   │       ├── TrendCharts.jsx          # Week-over-week booking rate and speed-to-lead trends
+│   │       ├── ConversionFunnel.jsx    # Live GHL pipeline stage distribution + conversion timing
+│   │       ├── LeadConversionMetrics.jsx # Per-CSR lead volume and conversion rates
+│   │       ├── QualityScorecard.jsx    # Premature lost and unanswered lead alert tracking
+│   │       ├── FollowUpBacklog.jsx     # Overdue follow-up tasks from GHL
+│   │       ├── WorkloadDistribution.jsx # Lead distribution across CSRs with bar chart
+│   │       └── WebhookTimeline.jsx     # Real-time pipeline activity feed from webhook_log
 │   ├── hooks/
 │   │   ├── useEodForm.js         # Form state management
 │   │   ├── useAutoSave.js        # LocalStorage draft auto-save
@@ -645,6 +650,37 @@ Receives real-time pipeline stage change events from GHL. Triggered by a GHL wor
 - **All events** → Logged to `webhook_log` table with resolved stage name and action taken
 
 **Auth:** `GHL_WEBHOOK_SECRET` via query param `?secret=`, header `X-Webhook-Secret`, or `Authorization: Bearer`. Open access if env var not set.
+
+### `POST /api/ghl/smart-opportunity`
+
+Smart opportunity creation for inbound calls. Called by GHL workflow instead of the built-in "Create Or Update Opportunity" action. Prevents duplicate opportunities by checking if the contact already has an active opportunity in the LEADS pipeline.
+
+**Flow:**
+1. Receives contact ID/name/phone from GHL workflow
+2. Searches for existing opportunities for that contact
+3. If active opportunity exists (New Lead, Contacted, Follow-Up, etc.) → **skips** creation
+4. If only resolved opportunities (Booked, Lost, Closed) or none → **creates** new one in "New Lead" stage
+
+**Payload:**
+```json
+{
+  "contact": {
+    "id": "{{contact.id}}",
+    "name": "{{contact.name}}",
+    "phone": "{{contact.phone}}"
+  }
+}
+```
+
+**Response:** `{ "action": "created" | "skipped" | "error", ... }`
+
+See `SMART_OPPORTUNITY_FLOW.md` for full documentation.
+
+### `GET /api/ghl/stages`
+
+Returns live pipeline stage distribution from GHL API. Used by the Conversion Funnel report component.
+
+**Response:** `{ "stages": { stageId: stageName }, "stageCounts": { stageName: count }, "totalOpportunities": 592 }`
 
 ### `GET /api/reports/weekly-executive`
 

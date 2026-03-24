@@ -121,10 +121,10 @@ The Reports tab provides:
 
 | CSR | Status | GHL Connected | Notes |
 |---|---|---|---|
-| Jessica | Active | Yes | Currently the only CSR with submitted reports |
-| David | Active | Yes | GHL mapped, ready to submit |
-| Lynch | Active | Yes | GHL mapped, ready to submit |
-| Tina | Active (starts 3/17) | Pending | New hire — needs GHL account, then mapping. 30-day ramp period active. |
+| Jessica | Active | Yes | GHL mapped, submitting daily. Phone: (808) 437-6851 |
+| David | Active | Yes | GHL mapped, submitting daily. International — no SMS |
+| Lynch | Active | Yes | GHL mapped, submitting daily. International — no SMS |
+| Tina | Active | Yes | GHL mapped (3/24). Phone: (808) 754-2929. 30-day ramp period active. |
 
 ---
 
