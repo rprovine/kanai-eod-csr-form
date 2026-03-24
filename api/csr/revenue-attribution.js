@@ -126,15 +126,16 @@ export default async function handler(req, res) {
       return res.json({ message: 'No booked opportunities with CSR assignments', attributed: 0 });
     }
 
-    // 3. Extract Workiz job numbers from opportunities
-    const CF_WORKIZ_JOB_ID = 'workiz_job_id';
-    const CF_WORKIZ_LEAD_ID = 'workiz_lead_id';
+    // 4. Extract Workiz job numbers from opportunities
+    // These are GHL custom field IDs — must match exactly
+    const CF_WORKIZ_JOB_ID = 'EILH2dteMrekSHTjbzOR';
+    const CF_WORKIZ_LEAD_ID = 'YcLhZO3aQtXAANTY0P9f';
 
-    function getCustomField(opp, key) {
+    function getCustomField(opp, fieldId) {
       const fields = opp.customFields || [];
       for (const f of fields) {
-        const fKey = (f.key || f.fieldKey || '').toLowerCase().replace(/\s+/g, '_');
-        if (fKey.includes(key)) return f.value || '';
+        const fId = f.id || f.key || f.fieldKey || '';
+        if (fId === fieldId) return f.value || '';
       }
       return '';
     }
