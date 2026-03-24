@@ -98,8 +98,38 @@ export default async function handler(req, res) {
       });
     }
 
-    // Step 3: No active opportunity — create a new one
-    console.log(`[smart-opp] CREATE: New opportunity for ${contactName} (no active opportunities)`);
+    // Step 2b: Check if any resolved opportunity was updated in the last 30 days
+    // If so, the customer is likely calling about their recent job — don't create a new lead
+    const RECENT_DAYS = 30;
+    const recentCutoff = new Date(Date.now() - RECENT_DAYS * 24 * 60 * 60 * 1000);
+    const recentResolvedOpps = existingOpps.filter(opp => {
+      const stageName = (opp.stageName || '').toLowerCase();
+      const isResolved = RESOLVED_STAGE_KEYWORDS.some(kw => stageName.includes(kw));
+      if (!isResolved) return false;
+      const lastChange = new Date(opp.lastStageChangeAt || opp.updatedAt || 0);
+      return lastChange > recentCutoff;
+    });
+
+    if (recentResolvedOpps.length > 0) {
+      const recentOpp = recentResolvedOpps[0];
+      console.log(`[smart-opp] SKIP: ${contactName} has recently resolved opportunity "${recentOpp.name}" in stage "${recentOpp.stageName}" (within ${RECENT_DAYS} days)`);
+
+      return res.status(200).json({
+        action: 'skipped',
+        reason: `Contact has recently resolved opportunity (within ${RECENT_DAYS} days)`,
+        existingOpportunity: {
+          id: recentOpp.id,
+          name: recentOpp.name,
+          stage: recentOpp.stageName,
+          pipelineId: recentOpp.pipelineId,
+        },
+        contactName,
+        contactId,
+      });
+    }
+
+    // Step 3: No active or recent opportunity — create a new one
+    console.log(`[smart-opp] CREATE: New opportunity for ${contactName} (no active or recent opportunities)`);
 
     const newOpp = await createOpportunity(contactId, contactName, contactPhone);
 
@@ -179,6 +209,7 @@ async function findContactOpportunities(contactId) {
       contactId: opp.contact?.id || opp.contactId,
       assignedTo: opp.assignedTo,
       lastStageChangeAt: opp.lastStageChangeAt,
+      updatedAt: opp.updatedAt,
     }));
   } catch (err) {
     console.error('[smart-opp] Error searching opportunities:', err);
