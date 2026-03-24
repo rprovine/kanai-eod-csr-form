@@ -69,36 +69,57 @@ export default async function handler(req, res) {
       csrByUserId[m.ghl_user_id] = { employeeId: m.employee_id, name: m.ghl_user_name };
     }
 
-    // 2. Fetch all booked opportunities from GHL (all pipelines)
-    const bookedOpps = [];
-    let page = 1;
-
-    while (page <= 10) {
-      const params = new URLSearchParams({
-        location_id: locationId,
-        status: 'open',
-        limit: '100',
-        page: String(page),
-      });
-
-      const r = await fetch(`${GHL_API_BASE}/opportunities/search?${params}`, { headers: ghlHeaders() });
-      if (!r.ok) break;
-      const data = await r.json();
-      const opps = data.opportunities || [];
-
-      for (const opp of opps) {
-        const stageL = (opp.pipelineStageName || '').toLowerCase();
-        const isBooked = stageL.includes('book') || stageL.includes('won') || stageL.includes('approved')
-          || stageL.includes('completed') || stageL.includes('estimate scheduled');
-
-        if (isBooked && opp.assignedTo && csrByUserId[opp.assignedTo]) {
-          bookedOpps.push(opp);
+    // 2. Get pipeline stage names for lookup
+    const stageMap = {};
+    const pipelinesRes = await fetch(
+      `${GHL_API_BASE}/opportunities/pipelines?locationId=${locationId}`,
+      { headers: ghlHeaders() }
+    );
+    if (pipelinesRes.ok) {
+      const pData = await pipelinesRes.json();
+      for (const p of (pData.pipelines || [])) {
+        for (const s of (p.stages || [])) {
+          stageMap[s.id] = s.name;
         }
       }
+    }
 
-      if (opps.length < 100) break;
-      page++;
-      await delay(200);
+    // 3. Fetch ALL opportunities from GHL (open and won)
+    const bookedOpps = [];
+
+    for (const status of ['open', 'won']) {
+      let page = 1;
+      while (page <= 10) {
+        const params = new URLSearchParams({
+          location_id: locationId,
+          status,
+          limit: '100',
+          page: String(page),
+        });
+
+        const r = await fetch(`${GHL_API_BASE}/opportunities/search?${params}`, { headers: ghlHeaders() });
+        if (!r.ok) break;
+        const data = await r.json();
+        const opps = data.opportunities || [];
+
+        for (const opp of opps) {
+          // Resolve stage name from ID if not populated
+          const stageName = opp.pipelineStageName || stageMap[opp.pipelineStageId] || '';
+          opp.pipelineStageName = stageName;
+          const stageL = stageName.toLowerCase();
+
+          const isBooked = stageL.includes('book') || stageL.includes('won') || stageL.includes('approved')
+            || stageL.includes('completed') || stageL.includes('estimate scheduled');
+
+          if (isBooked && opp.assignedTo && csrByUserId[opp.assignedTo]) {
+            bookedOpps.push(opp);
+          }
+        }
+
+        if (opps.length < 100) break;
+        page++;
+        await delay(200);
+      }
     }
 
     if (bookedOpps.length === 0) {
