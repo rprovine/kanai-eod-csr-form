@@ -598,7 +598,11 @@ export default async function handler(req, res) {
     if (workizToken && pipelineData.opportunities.length > 0) {
       await Promise.all(pipelineData.opportunities.map(async (opp) => {
         const uuid = opp.workizJobId || opp.workizLeadId;
-        if (!uuid) return;
+        if (!uuid) {
+          // No Workiz link — use GHL monetary value as estimated revenue
+          if (!opp.revenue && opp.value > 0) opp.revenue = opp.value;
+          return;
+        }
         try {
           // Try job endpoint first, then lead
           const endpoint = opp.workizJobId ? 'job' : 'lead';
@@ -610,7 +614,9 @@ export default async function handler(req, res) {
               const item = Array.isArray(d.data) ? d.data[0] : d.data;
               if (item?.SerialId) {
                 opp.jobNumber = String(item.SerialId);
-                opp.revenue = parseFloat(item.SubTotal || item.JobTotalPrice || 0);
+                const workizRev = parseFloat(item.SubTotal || item.JobTotalPrice || 0);
+                // Use Workiz revenue if available, otherwise fall back to GHL monetary value
+                opp.revenue = workizRev > 0 ? workizRev : opp.value || 0;
               }
             }
           }
