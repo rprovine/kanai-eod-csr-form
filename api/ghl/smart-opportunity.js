@@ -217,6 +217,7 @@ async function createOpportunity(contactId, contactName, contactPhone) {
         contactId,
         name: contactName,
         status: 'open',
+        source: 'Inbound Call',
       }),
     });
 
