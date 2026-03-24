@@ -655,6 +655,30 @@ export default async function handler(req, res) {
       }
     }
 
+    // Final enrichment: cross-reference completed jobs in field supervisor data for actual revenue
+    // This catches revenue for jobs that have been completed and invoiced in Workiz
+    const oppsNeedingRevenue = pipelineData.opportunities.filter(o => !o.revenue && o.jobNumber);
+    if (oppsNeedingRevenue.length > 0) {
+      const jobNumbers = oppsNeedingRevenue.map(o => o.jobNumber).filter(Boolean);
+      if (jobNumbers.length > 0) {
+        const { data: completedJobs } = await supabaseAdmin
+          .from('junk_removal_jobs')
+          .select('job_number, revenue')
+          .in('job_number', jobNumbers)
+          .gt('revenue', 0);
+
+        if (completedJobs?.length > 0) {
+          const revMap = {};
+          for (const j of completedJobs) revMap[j.job_number] = parseFloat(j.revenue);
+          for (const opp of oppsNeedingRevenue) {
+            if (opp.jobNumber && revMap[opp.jobNumber]) {
+              opp.revenue = revMap[opp.jobNumber];
+            }
+          }
+        }
+      }
+    }
+
     // Build prefill fields
     const fields = {};
     const sources = {};
