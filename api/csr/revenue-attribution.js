@@ -135,7 +135,10 @@ export default async function handler(req, res) {
       const fields = opp.customFields || [];
       for (const f of fields) {
         const fId = f.id || f.key || f.fieldKey || '';
-        if (fId === fieldId) return f.value || '';
+        if (fId === fieldId) {
+          // GHL returns values in different formats depending on the API
+          return f.value || f.fieldValueString || f.fieldValue || '';
+        }
       }
       return '';
     }
