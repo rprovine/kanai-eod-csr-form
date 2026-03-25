@@ -1,4 +1,10 @@
 import { supabaseAdmin } from '../_lib/supabase-admin.js';
+import {
+  fetchOpportunities,
+  fetchPipelineStages,
+  getCustomField,
+  CF,
+} from '../_lib/ghl-client.js';
 
 function verifyAuth(req) {
   const secret = process.env.DOCKET_WEBHOOK_SECRET;
@@ -22,18 +28,16 @@ export default async function handler(req, res) {
 
   const body = req.body || {};
 
-  // Log full payload for debugging (unknown format)
+  // Log full payload for debugging
   console.log('Docket webhook payload:', JSON.stringify(body));
 
-  // Extract fields we can reasonably guess at
-  const taskNumber = body.taskNumber || body.task_number || body.TaskNumber || body.id || '';
+  // Extract fields — Docket payload format may vary, try common shapes
+  const taskNumber = body.taskNumber || body.task_number || body.TaskNumber
+    || body.taskId || body.task_id || body.id || '';
   const status = body.status || body.Status || '';
-  const customerName = body.customerName || body.customer_name || body.CustomerName || '';
+  const customerName = body.customerName || body.customer_name || body.CustomerName
+    || body.clientName || body.client_name || '';
   const price = parseFloat(body.price || body.Price || body.total || body.Total || 0);
-
-  if (!taskNumber && !customerName) {
-    return res.status(200).json({ received: true, matched: false, reason: 'No task identifier' });
-  }
 
   if (!supabaseAdmin) {
     console.warn('Supabase not configured, cannot process Docket webhook');
@@ -41,60 +45,180 @@ export default async function handler(req, res) {
   }
 
   try {
-    let matched = false;
+    // Log webhook to audit table
+    await supabaseAdmin
+      .from('webhook_log')
+      .insert({ source: 'docket', payload: body })
+      .then(() => {})
+      .catch(err => console.error('Webhook log error:', err));
 
-    // Try to find matching csr_eod_jobs_booked entry
-    let query = supabaseAdmin
+    if (!taskNumber && !customerName) {
+      console.log('Docket webhook: no task identifier or customer name, skipping');
+      return res.status(200).json({ received: true, matched: false, reason: 'No task identifier' });
+    }
+
+    const result = await processDocketWebhook({ taskNumber: String(taskNumber), status, customerName, price });
+    return res.status(200).json({ received: true, ...result });
+  } catch (err) {
+    console.error('Docket webhook processing error:', err);
+    return res.status(200).json({ received: true, matched: false, error: 'Processing error' });
+  }
+}
+
+async function processDocketWebhook({ taskNumber, status, customerName, price }) {
+  let ghlMatched = false;
+  let jobsMatched = false;
+
+  // 1. Try to match to a GHL opportunity by customer name and store the mapping
+  if (taskNumber && customerName) {
+    ghlMatched = await matchAndMapToGhl(taskNumber, customerName);
+  }
+
+  // 2. Update csr_eod_jobs_booked if we can find a match
+  jobsMatched = await updateJobsBooked({ taskNumber, customerName, price });
+
+  return { matched: ghlMatched || jobsMatched, ghlMatched, jobsMatched };
+}
+
+/**
+ * Find a GHL opportunity by customer name (DR/dumpster stage) and store
+ * the docket_task_number → ghl_opportunity_id mapping so prefill can
+ * auto-fill the job number for DR booked jobs.
+ */
+async function matchAndMapToGhl(taskNumber, customerName) {
+  // Check if we already have this mapping
+  const { data: existing } = await supabaseAdmin
+    .from('docket_ghl_mapping')
+    .select('docket_task_number')
+    .eq('docket_task_number', taskNumber)
+    .limit(1);
+
+  if (existing && existing.length > 0) {
+    console.log(`Docket task ${taskNumber} already mapped to GHL`);
+    return true;
+  }
+
+  // Search GHL opportunities for a customer name match in DR stages
+  try {
+    const opps = await fetchOpportunities({ limit: 10 });
+    const stageMap = await fetchPipelineStages();
+    const nameLower = customerName.toLowerCase().trim();
+
+    // Find DR opportunities matching this customer name
+    const match = opps.find(opp => {
+      const oppName = (opp.contact?.name || opp.name || '').toLowerCase().trim();
+      if (!oppName || !nameLower) return false;
+
+      const stageName = (stageMap[opp.pipelineStageId] || opp.pipelineStageName || '').toLowerCase();
+      const isDR = stageName.includes('dr ') || stageName.includes('dumpster');
+
+      // Match by exact name or partial (first+last in either direction)
+      const nameMatch = oppName === nameLower
+        || oppName.includes(nameLower)
+        || nameLower.includes(oppName);
+
+      return isDR && nameMatch;
+    });
+
+    if (match) {
+      await supabaseAdmin
+        .from('docket_ghl_mapping')
+        .upsert({
+          docket_task_number: taskNumber,
+          ghl_opportunity_id: match.id,
+          customer_name: customerName,
+          updated_at: new Date().toISOString(),
+        })
+        .then(() => {})
+        .catch(err => console.error('Docket mapping upsert error:', err));
+
+      console.log(`Docket: mapped task ${taskNumber} → GHL opportunity ${match.id} (${match.contact?.name || match.name})`);
+      return true;
+    } else {
+      // No DR stage match — try any opportunity with the same customer name
+      const anyMatch = opps.find(opp => {
+        const oppName = (opp.contact?.name || opp.name || '').toLowerCase().trim();
+        return oppName && (oppName === nameLower || oppName.includes(nameLower) || nameLower.includes(oppName));
+      });
+
+      if (anyMatch) {
+        await supabaseAdmin
+          .from('docket_ghl_mapping')
+          .upsert({
+            docket_task_number: taskNumber,
+            ghl_opportunity_id: anyMatch.id,
+            customer_name: customerName,
+            updated_at: new Date().toISOString(),
+          })
+          .then(() => {})
+          .catch(err => console.error('Docket mapping upsert error:', err));
+
+        console.log(`Docket: mapped task ${taskNumber} → GHL opportunity ${anyMatch.id} (fallback name match)`);
+        return true;
+      } else {
+        console.log(`Docket: no GHL opportunity found for "${customerName}" (task ${taskNumber})`);
+      }
+    }
+  } catch (err) {
+    console.error('Docket GHL match error:', err);
+  }
+  return false;
+}
+
+/**
+ * Update csr_eod_jobs_booked entries — fill in job_number and/or revenue.
+ */
+async function updateJobsBooked({ taskNumber, customerName, price }) {
+  let matched = false;
+
+  // Try to find matching csr_eod_jobs_booked entry by task number first
+  if (taskNumber) {
+    const { data: byJobNumber } = await supabaseAdmin
       .from('csr_eod_jobs_booked')
       .select('id, job_number, customer_name, estimated_revenue')
       .eq('system', 'Docket')
+      .eq('job_number', taskNumber)
       .limit(5);
 
-    // Prefer matching by job_number if available, otherwise by customer_name
-    if (taskNumber) {
-      const { data: byJobNumber } = await query.eq('job_number', String(taskNumber));
-      if (byJobNumber && byJobNumber.length > 0) {
-        matched = true;
-        const row = byJobNumber[0];
-        const updates = {};
-        if (price > 0) updates.estimated_revenue = price;
-        if (Object.keys(updates).length > 0) {
-          await supabaseAdmin
-            .from('csr_eod_jobs_booked')
-            .update(updates)
-            .eq('id', row.id);
-          console.log(`Docket: updated job ${taskNumber} revenue: $${price}`);
-        }
+    if (byJobNumber && byJobNumber.length > 0) {
+      matched = true;
+      const row = byJobNumber[0];
+      const updates = {};
+      if (price > 0) updates.estimated_revenue = price;
+      if (Object.keys(updates).length > 0) {
+        await supabaseAdmin
+          .from('csr_eod_jobs_booked')
+          .update(updates)
+          .eq('id', row.id);
+        console.log(`Docket: updated job ${taskNumber} revenue: $${price}`);
       }
     }
-
-    if (!matched && customerName) {
-      const { data: byCustomer } = await supabaseAdmin
-        .from('csr_eod_jobs_booked')
-        .select('id, job_number, customer_name, estimated_revenue')
-        .eq('system', 'Docket')
-        .ilike('customer_name', `%${customerName}%`)
-        .limit(5);
-
-      if (byCustomer && byCustomer.length > 0) {
-        matched = true;
-        const row = byCustomer[0];
-        const updates = {};
-        if (taskNumber && !row.job_number) updates.job_number = String(taskNumber);
-        if (price > 0) updates.estimated_revenue = price;
-        if (Object.keys(updates).length > 0) {
-          await supabaseAdmin
-            .from('csr_eod_jobs_booked')
-            .update(updates)
-            .eq('id', row.id);
-          console.log(`Docket: matched customer "${customerName}", updated job_number=${taskNumber || 'n/a'}, revenue=$${price || 'n/a'}`);
-        }
-      }
-    }
-
-    return res.status(200).json({ received: true, matched });
-  } catch (err) {
-    console.error('Docket webhook error:', err);
-    return res.status(200).json({ received: true, matched: false, error: 'Processing error' });
   }
+
+  // Fallback: match by customer name — fill in task number and/or revenue
+  if (!matched && customerName) {
+    const { data: byCustomer } = await supabaseAdmin
+      .from('csr_eod_jobs_booked')
+      .select('id, job_number, customer_name, estimated_revenue')
+      .eq('system', 'Docket')
+      .ilike('customer_name', `%${customerName}%`)
+      .limit(5);
+
+    if (byCustomer && byCustomer.length > 0) {
+      matched = true;
+      const row = byCustomer[0];
+      const updates = {};
+      if (taskNumber && !row.job_number) updates.job_number = taskNumber;
+      if (price > 0) updates.estimated_revenue = price;
+      if (Object.keys(updates).length > 0) {
+        await supabaseAdmin
+          .from('csr_eod_jobs_booked')
+          .update(updates)
+          .eq('id', row.id);
+        console.log(`Docket: matched customer "${customerName}", updated job_number=${taskNumber || 'n/a'}, revenue=$${price || 'n/a'}`);
+      }
+    }
+  }
+
+  return matched;
 }

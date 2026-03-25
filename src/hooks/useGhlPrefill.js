@@ -60,8 +60,8 @@ export function useGhlPrefill(setFields) {
           const jobEntries = bookedOpps.map((opp) => {
             const stage = (opp.stage || '').toLowerCase()
             const isDumpster = stage.includes('dr ')
-            // For JR: use Workiz serial number. For DR: leave blank (Docket task # entered manually)
-            const jobNumber = isDumpster ? '' : (opp.jobNumber || '')
+            // For JR: use Workiz serial number. For DR: use Docket task # if available
+            const jobNumber = opp.jobNumber || ''
             return {
               ...getDefaultJobEntry(),
               job_number: jobNumber,
