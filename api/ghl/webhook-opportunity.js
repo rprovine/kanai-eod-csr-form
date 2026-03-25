@@ -109,6 +109,13 @@ async function processWebhook(opportunity) {
 
   console.log(`[WEBHOOK] ${contactName}: opp=${opportunityId} stage=${stageId} assigned=${opportunity.assignedTo}`);
 
+  // --- Auto-fix Spanish source text from Workiz Manager integration ---
+  const source = opportunity.source || '';
+  if (source && /necesito|pégalo|proporciona|evaluar|matchear|source para/i.test(source)) {
+    console.log(`[WEBHOOK] Fixing Spanish source on ${contactName}: "${source.substring(0, 40)}..."`);
+    await updateOpportunity(opportunityId, { source: 'Inbound Call' });
+  }
+
   // --- Auto-assignment: no assignedTo ---
   let autoAssigned = false;
   if (!opportunity.assignedTo && contactId) {
