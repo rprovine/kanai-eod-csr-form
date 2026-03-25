@@ -236,6 +236,7 @@ export default async function handler(req, res) {
       if (jobNumber || contactName) {
         oppJobMap.push({
           ghlOppId: opp.id,
+          contactId: opp.contact?.id || opp.contactId || '',
           csrName: csr.name,
           csrEmployeeId: csr.employeeId,
           jobNumber,
@@ -263,22 +264,49 @@ export default async function handler(req, res) {
       }
     }
 
-    // 5. Also try Workiz API for revenue on jobs not in field supervisor data
-    const missingRevenue = oppJobMap.filter(o => o.jobNumber && !revenueMap[o.jobNumber]);
-    if (workizToken && missingRevenue.length > 0) {
-      for (const item of missingRevenue) {
+    // 5. For items without revenue yet, try matching by contact phone → Workiz job
+    // The GHL opp has the contact, the field supervisor has the completed job serial
+    // They don't share IDs but share the customer phone number
+    const needsPhoneMatch = oppJobMap.filter(o => !revenueMap[o.jobNumber]);
+    if (needsPhoneMatch.length > 0) {
+      for (const item of needsPhoneMatch) {
         try {
-          const r = await fetch(`https://api.workiz.com/api/v1/${workizToken}/job/get/${item.jobNumber}/`);
-          if (r.ok) {
-            const text = await r.text();
-            if (text) {
-              const d = JSON.parse(text);
-              const job = Array.isArray(d.data) ? d.data[0] : d.data;
-              const rev = parseFloat(job?.SubTotal || job?.JobTotalPrice || 0);
-              if (rev > 0) revenueMap[item.jobNumber] = rev;
+          // Get the GHL contact's phone
+          const contactRes = await fetch(`${GHL_API_BASE}/contacts/${item.contactId}`, { headers: ghlHeaders() });
+          if (!contactRes.ok) continue;
+          const contactData = await contactRes.json();
+          const phone = (contactData.contact?.phone || '').replace(/\D/g, '');
+          if (phone.length < 10) continue;
+          const phone10 = phone.length === 11 && phone.startsWith('1') ? phone.slice(1) : phone;
+
+          // Search Workiz for jobs with this phone number
+          if (workizToken) {
+            const wr = await fetch(`https://api.workiz.com/api/v1/${workizToken}/job/all/?phone=${phone10}&records=10`);
+            if (wr.ok) {
+              const wText = await wr.text();
+              if (wText) {
+                const wData = JSON.parse(wText);
+                const jobs = Array.isArray(wData) ? wData : (wData.data || []);
+                for (const wJob of jobs) {
+                  const jNum = String(wJob.SerialId || '');
+                  const rev = parseFloat(wJob.SubTotal || wJob.JobTotalPrice || 0);
+                  if (jNum && rev > 0) {
+                    revenueMap[jNum] = rev;
+                    // Update the item's job number to the actual Workiz job serial
+                    if (!item.jobNumber || item.jobNumber.length <= 4) {
+                      item.jobNumber = jNum;
+                    }
+                  }
+                }
+              }
             }
           }
-          await delay(150);
+
+          // Also check field supervisor data by searching for this phone's jobs
+          // (junk_removal_jobs doesn't have phone, but we can check if any of the
+          // Workiz job serials found above are in the field supervisor data)
+
+          await delay(200);
         } catch {}
       }
     }
