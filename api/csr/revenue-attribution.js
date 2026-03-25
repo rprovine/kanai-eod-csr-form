@@ -185,17 +185,51 @@ export default async function handler(req, res) {
 
       if (uuid && workizToken) {
         try {
-          const endpoint = workizJobUUID ? 'job' : 'lead';
-          const r = await fetch(`https://api.workiz.com/api/v1/${workizToken}/${endpoint}/get/${uuid}/`);
-          if (r.ok) {
-            const text = await r.text();
-            if (text) {
-              const d = JSON.parse(text);
-              const item = Array.isArray(d.data) ? d.data[0] : d.data;
-              if (item?.SerialId) jobNumber = String(item.SerialId);
+          // Try job endpoint first
+          if (workizJobUUID) {
+            const r = await fetch(`https://api.workiz.com/api/v1/${workizToken}/job/get/${workizJobUUID}/`);
+            if (r.ok) {
+              const text = await r.text();
+              if (text) {
+                const d = JSON.parse(text);
+                const item = Array.isArray(d.data) ? d.data[0] : d.data;
+                if (item?.SerialId) jobNumber = String(item.SerialId);
+              }
             }
+            await delay(150);
           }
-          await delay(150);
+
+          // If no job number yet, try lead endpoint — a lead may have a linked job
+          if (!jobNumber && workizLeadUUID) {
+            const r = await fetch(`https://api.workiz.com/api/v1/${workizToken}/lead/get/${workizLeadUUID}/`);
+            if (r.ok) {
+              const text = await r.text();
+              if (text) {
+                const d = JSON.parse(text);
+                const item = Array.isArray(d.data) ? d.data[0] : d.data;
+                // Check if lead has a linked job (converted lead → job)
+                const linkedJobId = item?.JobUUID || item?.JobId || item?.LinkedJobUUID || '';
+                if (linkedJobId) {
+                  // Fetch the linked job to get its serial number
+                  const jr = await fetch(`https://api.workiz.com/api/v1/${workizToken}/job/get/${linkedJobId}/`);
+                  if (jr.ok) {
+                    const jText = await jr.text();
+                    if (jText) {
+                      const jd = JSON.parse(jText);
+                      const jItem = Array.isArray(jd.data) ? jd.data[0] : jd.data;
+                      if (jItem?.SerialId) jobNumber = String(jItem.SerialId);
+                    }
+                  }
+                  await delay(150);
+                }
+                // Fall back to lead serial if no linked job
+                if (!jobNumber && item?.SerialId) {
+                  jobNumber = String(item.SerialId);
+                }
+              }
+            }
+            await delay(150);
+          }
         } catch {}
       }
 
