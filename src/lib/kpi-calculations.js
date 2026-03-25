@@ -157,8 +157,10 @@ export function calcAllKPIs(formData, { hireDate } = {}) {
   const guardrails = calcGuardrailDeductions(formData)
   const accelerators = calcAcceleratorBonus(formData)
 
-  // Total bookings for bonus calc
+  // Total bookings and qualified leads for bonus calc
   const totalBookings = formData.disp_booked || 0
+  const qualifiedLeads = (formData.disp_booked || 0) + (formData.disp_quoted || 0) +
+    (formData.disp_followup_required || 0) + (formData.disp_lost || 0)
 
   // Daily bonus estimate
   let perBookingBonus = 0
@@ -186,6 +188,7 @@ export function calcAllKPIs(formData, { hireDate } = {}) {
     activityMinimums,
     bonusEligible,
     totalBookings,
+    qualifiedLeads,
     ramp,
     guardrails,
     accelerators,

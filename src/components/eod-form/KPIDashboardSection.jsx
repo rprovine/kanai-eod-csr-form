@@ -26,6 +26,12 @@ export default function KPIDashboardSection({ formData, hireDate }) {
 
   const kpiRows = [
     {
+      label: 'Qualified Leads',
+      display: `${kpis.qualifiedLeads}`,
+      target: `${kpis.totalBookings} booked`,
+      status: kpis.qualifiedLeads > 0 ? 'green' : 'yellow',
+    },
+    {
       label: 'Booking Rate',
       display: `${kpis.bookingRate}%`,
       target: '60%+ (Standard) / 70%+ (Elite)',
@@ -209,6 +215,15 @@ export default function KPIDashboardSection({ formData, hireDate }) {
           Today's Estimated Bonus
         </h4>
         <div className="space-y-2 text-sm">
+          {/* Qualified leads → bookings */}
+          <div className="flex justify-between">
+            <span className="text-slate-400">
+              Qualified Leads → Booked
+            </span>
+            <span className="text-slate-100 font-medium">
+              {kpis.totalBookings} / {kpis.qualifiedLeads} ({kpis.qualifiedLeads > 0 ? Math.round(kpis.totalBookings / kpis.qualifiedLeads * 100) : 0}%)
+            </span>
+          </div>
           {/* Per-booking bonus */}
           <div className="flex justify-between">
             <span className="text-slate-400">

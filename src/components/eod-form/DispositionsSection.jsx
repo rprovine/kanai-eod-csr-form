@@ -9,6 +9,8 @@ export default function DispositionsSection({ formData, setField, ghl }) {
   const totalDispositions = DISPOSITION_TYPES.reduce(
     (sum, d) => sum + (formData[d.key] || 0), 0
   )
+  const qualifiedLeads = (formData.disp_booked || 0) + (formData.disp_quoted || 0) +
+    (formData.disp_followup_required || 0) + (formData.disp_lost || 0)
   const tier = getPerformanceTier(formData.daily_booking_rate)
 
   return (
@@ -33,10 +35,18 @@ export default function DispositionsSection({ formData, setField, ghl }) {
 
       {/* Auto-calculated metrics */}
       <div className="mt-6 space-y-3">
-        <div>
+        <div className="grid grid-cols-3 gap-3">
           <div className="bg-slate-800/50 rounded-lg p-3 text-center">
             <p className="text-xs text-slate-400 mb-1">Total Dispositions</p>
             <p className="text-xl font-bold text-slate-100">{totalDispositions}</p>
+          </div>
+          <div className="bg-slate-800/50 rounded-lg p-3 text-center">
+            <p className="text-xs text-slate-400 mb-1">Qualified Leads</p>
+            <p className="text-xl font-bold text-kanai-blue-light">{qualifiedLeads}</p>
+          </div>
+          <div className="bg-slate-800/50 rounded-lg p-3 text-center">
+            <p className="text-xs text-slate-400 mb-1">Booked</p>
+            <p className="text-xl font-bold text-accent-green">{formData.disp_booked || 0}</p>
           </div>
         </div>
 
