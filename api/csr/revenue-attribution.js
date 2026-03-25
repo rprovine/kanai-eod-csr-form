@@ -334,22 +334,35 @@ export default async function handler(req, res) {
       if (!reports?.length) continue;
       const reportId = reports[0].id;
 
-      // Check if this job is already in csr_eod_jobs_booked
-      const { data: existing } = await supabaseAdmin
+      // Check if this job is already in csr_eod_jobs_booked (by job number OR customer name)
+      let existingQuery = supabaseAdmin
         .from('csr_eod_jobs_booked')
-        .select('id, estimated_revenue')
-        .eq('eod_report_id', reportId)
-        .eq('job_number', item.jobNumber || item.contactName)
-        .limit(1);
+        .select('id, estimated_revenue, job_number')
+        .eq('eod_report_id', reportId);
+
+      if (item.jobNumber) {
+        existingQuery = existingQuery.eq('job_number', item.jobNumber);
+      } else {
+        existingQuery = existingQuery.eq('customer_name', item.contactName);
+      }
+
+      const { data: existing } = await existingQuery.limit(1);
 
       if (existing?.length > 0) {
-        // Update revenue if it changed and is > 0
+        // Update revenue and/or job number if we have better data
+        const updates = {};
         if (revenue > 0 && parseFloat(existing[0].estimated_revenue || 0) !== revenue) {
+          updates.estimated_revenue = revenue;
+        }
+        if (item.jobNumber && !existing[0].job_number) {
+          updates.job_number = item.jobNumber;
+        }
+        if (Object.keys(updates).length > 0) {
           await supabaseAdmin
             .from('csr_eod_jobs_booked')
-            .update({ estimated_revenue: revenue })
+            .update(updates)
             .eq('id', existing[0].id);
-          updated++;
+          if (updates.estimated_revenue) updated++;
         }
       } else {
         // Insert new booked job entry
