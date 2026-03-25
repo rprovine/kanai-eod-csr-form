@@ -38,6 +38,7 @@
     { "path": "/api/csr/shift-handoff", "schedule": "30 2 * * 1-5" },
     { "path": "/api/ghl/lost-reason-check", "schedule": "*/10 0-4,18-23 * * *" },
     { "path": "/api/ghl/followup-sync", "schedule": "0 18,20,22,0,2,4 * * *" },
-    { "path": "/api/csr/revenue-attribution", "schedule": "0 9 * * *" }
+    { "path": "/api/csr/revenue-attribution", "schedule": "0 9 * * *" },
+    { "path": "/api/ghl/opportunity-sync", "schedule": "*/5 0-4,18-23 * * *" }
   ]
 }
