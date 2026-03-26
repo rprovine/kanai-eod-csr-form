@@ -73,7 +73,7 @@ export default function LeadConversionMetrics({ dateRange }) {
         <thead>
           <tr className="border-b border-card-border">
             <th className="text-left py-2 px-2 text-slate-400 font-medium text-xs uppercase">CSR Name</th>
-            <th className="text-center py-2 px-2 text-slate-400 font-medium text-xs uppercase">Leads Worked</th>
+            <th className="text-center py-2 px-2 text-slate-400 font-medium text-xs uppercase">Qualified Leads</th>
             <th className="text-center py-2 px-2 text-slate-400 font-medium text-xs uppercase">Booked</th>
             <th className="text-left py-2 px-2 text-slate-400 font-medium text-xs uppercase">Conversion Rate</th>
           </tr>

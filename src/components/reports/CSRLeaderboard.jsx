@@ -52,6 +52,7 @@ export default function CSRLeaderboard({ csrPerformance, reportsData }) {
               <th className="text-left py-2 px-2 text-slate-400 font-medium w-12">Rank</th>
               <th className="text-left py-2 px-2 text-slate-400 font-medium">CSR</th>
               <th className="text-center py-2 px-2 text-slate-400 font-medium">Booking Rate</th>
+              <th className="text-center py-2 px-2 text-slate-400 font-medium">Qualified</th>
               <th className="text-center py-2 px-2 text-slate-400 font-medium">Booked</th>
               <th className="text-center py-2 px-2 text-slate-400 font-medium">Revenue</th>
               <th className="text-center py-2 px-2 text-slate-400 font-medium">Rev/Hr</th>
@@ -83,6 +84,7 @@ export default function CSRLeaderboard({ csrPerformance, reportsData }) {
                       <span className={`font-bold text-sm ${csr.tier.color}`}>{csr.avgBookingRate}%</span>
                     </div>
                   </td>
+                  <td className="py-3 px-2 text-center text-slate-300">{csr.totalQualified || '--'}</td>
                   <td className="py-3 px-2 text-center text-slate-100 font-semibold">{csr.totalBooked}</td>
                   <td className="py-3 px-2 text-center text-slate-300">${csr.totalRevenue.toLocaleString()}</td>
                   <td className="py-3 px-2 text-center text-slate-300">
@@ -158,7 +160,11 @@ export default function CSRLeaderboard({ csrPerformance, reportsData }) {
                 <div className={`text-right text-sm font-bold mt-1 ${csr.tier.color}`}>{csr.avgBookingRate}%</div>
               </div>
 
-              <div className="grid grid-cols-4 gap-3 text-xs">
+              <div className="grid grid-cols-5 gap-3 text-xs">
+                <div className="text-center">
+                  <p className="text-slate-500">Qualified</p>
+                  <p className="text-slate-200 font-semibold">{csr.totalQualified || '--'}</p>
+                </div>
                 <div className="text-center">
                   <p className="text-slate-500">Booked</p>
                   <p className="text-slate-200 font-semibold">{csr.totalBooked}</p>
