@@ -678,9 +678,6 @@ export default function CSRReportsView() {
           {/* Conversion Funnel */}
           <ConversionFunnel reports={enrichedReports} dateRange={dateRange} />
 
-          {/* Lead Conversion by CSR */}
-          <LeadConversionMetrics dateRange={dateRange} />
-
           {/* CSR Workload Distribution */}
           <WorkloadDistribution dateRange={dateRange} />
 
