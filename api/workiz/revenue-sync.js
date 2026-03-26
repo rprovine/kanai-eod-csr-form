@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '../_lib/supabase-admin.js';
-import { getJobByNumber } from '../_lib/workiz-client.js';
+import { getJobsByUUID } from '../_lib/workiz-client.js';
 
 function authorize(req) {
   if (!process.env.CRON_SECRET) return true;
@@ -44,43 +44,60 @@ export default async function handler(req, res) {
       return res.status(200).json({ message: 'No jobs need revenue update', updated: 0 });
     }
 
+    // Batch lookup all job numbers from Workiz
+    const jobNumbers = [...new Set(jobs.map(j => j.job_number).filter(Boolean))];
+    let workizMap = {};
+
+    try {
+      workizMap = await getJobsByUUID(jobNumbers);
+      console.log(`[revenue-sync] Workiz returned ${Object.keys(workizMap).length} matches for ${jobNumbers.length} job numbers`);
+    } catch (err) {
+      console.error('[revenue-sync] Workiz batch lookup error:', err.message);
+    }
+
+    // Also check junk_removal_jobs table for field supervisor revenue
+    let jrRevMap = {};
+    if (jobNumbers.length > 0) {
+      const { data: jrJobs } = await supabaseAdmin
+        .from('junk_removal_jobs')
+        .select('job_number, revenue')
+        .in('job_number', jobNumbers);
+      if (jrJobs) {
+        for (const j of jrJobs) {
+          if (j.job_number && parseFloat(j.revenue) > 0) {
+            jrRevMap[j.job_number] = parseFloat(j.revenue);
+          }
+        }
+      }
+    }
+
     let updated = 0;
     const errors = [];
 
     for (const job of jobs) {
       try {
-        // Try Workiz first
-        const workizJob = await getJobByNumber(job.job_number);
+        // Try Workiz match first
+        const workizMatch = workizMap[job.job_number];
+        const workizRev = workizMatch?.revenue || 0;
 
-        if (workizJob && workizJob.revenue > 0) {
+        // Fallback to field supervisor data
+        const jrRev = jrRevMap[job.job_number] || 0;
+
+        const revenue = workizRev > 0 ? workizRev : jrRev;
+
+        if (revenue > 0) {
           const { error: updateError } = await supabaseAdmin
             .from('csr_eod_jobs_booked')
-            .update({ estimated_revenue: workizJob.revenue })
+            .update({ estimated_revenue: revenue })
             .eq('id', job.id);
 
-          if (!updateError) updated++;
-          else errors.push({ job_number: job.job_number, error: updateError.message });
-        } else {
-          // Fallback: check junk_removal_jobs table
-          const { data: jrJob } = await supabaseAdmin
-            .from('junk_removal_jobs')
-            .select('revenue')
-            .eq('job_number', job.job_number)
-            .single();
-
-          if (jrJob && parseFloat(jrJob.revenue) > 0) {
-            const { error: updateError } = await supabaseAdmin
-              .from('csr_eod_jobs_booked')
-              .update({ estimated_revenue: parseFloat(jrJob.revenue) })
-              .eq('id', job.id);
-
-            if (!updateError) updated++;
-            else errors.push({ job_number: job.job_number, error: updateError.message });
+          if (!updateError) {
+            updated++;
+            console.log(`[revenue-sync] Updated #${job.job_number}: $${revenue}`);
+          } else {
+            errors.push({ job_number: job.job_number, error: updateError.message });
           }
         }
-
-        // Rate limit: 200ms between Workiz calls
-        await delay(200);
       } catch (err) {
         errors.push({ job_number: job.job_number, error: err.message });
       }
@@ -88,6 +105,8 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       total_checked: jobs.length,
+      workizMatched: Object.keys(workizMap).length,
+      jrMatched: Object.keys(jrRevMap).length,
       updated,
       errors: errors.length > 0 ? errors : undefined,
     });
