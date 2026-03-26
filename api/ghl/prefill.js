@@ -601,29 +601,32 @@ export default async function handler(req, res) {
         if (!uuid) {
           // No Workiz link — use GHL monetary value as estimated revenue
           if (!opp.revenue && opp.value > 0) opp.revenue = opp.value;
-          return;
         }
+      }));
+
+      // Batch resolve Workiz UUIDs to serial numbers and revenue
+      // The individual /job/get/ endpoint returns 204, so we use batch lookup
+      const oppsWithUUIDs = pipelineData.opportunities.filter(o => (o.workizJobId || o.workizLeadId) && !o.jobNumber);
+      if (oppsWithUUIDs.length > 0 && workizToken) {
         try {
-          // Try job endpoint first, then lead
-          const endpoint = opp.workizJobId ? 'job' : 'lead';
-          const r = await fetch(`https://api.workiz.com/api/v1/${workizToken}/${endpoint}/get/${uuid}/`);
-          if (r.ok) {
-            const text = await r.text();
-            if (text) {
-              const d = JSON.parse(text);
-              const item = Array.isArray(d.data) ? d.data[0] : d.data;
-              if (item?.SerialId) {
-                opp.jobNumber = String(item.SerialId);
-                const workizRev = parseFloat(item.SubTotal || item.JobTotalPrice || 0);
-                // Use Workiz revenue if available, otherwise fall back to GHL monetary value
-                opp.revenue = workizRev > 0 ? workizRev : opp.value || 0;
-              }
+          const { getJobsByUUID } = await import('../_lib/workiz-client.js');
+          const uuids = oppsWithUUIDs.map(o => o.workizJobId || o.workizLeadId).filter(Boolean);
+          const uuidMap = await getJobsByUUID(uuids);
+
+          for (const opp of oppsWithUUIDs) {
+            const uuid = opp.workizJobId || opp.workizLeadId;
+            const match = uuidMap[uuid];
+            if (match) {
+              opp.jobNumber = match.jobNumber;
+              const workizRev = match.revenue || 0;
+              opp.revenue = workizRev > 0 ? workizRev : opp.value || 0;
+              console.log(`[prefill] Resolved ${uuid} → Job #${match.jobNumber} ($${workizRev})`);
             }
           }
         } catch (err) {
-          // Non-critical — fall back to UUID
+          console.error('Workiz UUID resolve error:', err.message);
         }
-      }));
+      }
     }
 
     // Enrich booked opportunities with Docket task numbers
