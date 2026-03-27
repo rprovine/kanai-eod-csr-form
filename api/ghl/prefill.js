@@ -754,7 +754,10 @@ export default async function handler(req, res) {
       const stageL = stageName.toLowerCase();
       const lastChange = toHawaiiDate(opp.lastStageChangeAt || opp.updatedAt);
       if (lastChange !== date) continue;
-      const entry = { id: opp.id, contactId: opp.contact?.id || opp.contactId, name: opp.contact?.name || opp.name || '', stage: stageName, leadSource: getCustomField(opp, CF_JOB_SOURCE) };
+      let leadSource = opp.source || getCustomField(opp, CF_JOB_SOURCE) || '';
+      // Clean Spanish placeholder from Workiz integration
+      if (/necesito|pégalo|proporciona|evaluar|matchear|envíame/i.test(leadSource)) leadSource = '';
+      const entry = { id: opp.id, contactId: opp.contact?.id || opp.contactId, name: opp.contact?.name || opp.name || '', stage: stageName, leadSource };
 
       if (stageL.includes('book') || stageL.includes('estimate scheduled') || stageL.includes('won') || stageL.includes('approved')) {
         dispBuckets.booked.push(entry);
