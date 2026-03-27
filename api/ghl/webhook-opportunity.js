@@ -123,12 +123,30 @@ async function processWebhook(opportunity) {
     autoAssigned = true;
   }
 
+  // --- Close AI conversations when stage moves to excluded stages ---
+  const AI_EXCLUDED_STAGES = [
+    'onsite estimate scheduled', 'onsite estimate completed',
+    'jr booked', 'jr lost', 'dr booked', 'dr lost',
+    'non-qualified', 'booked', 'won', 'lost', 'declined', 'closed',
+  ];
+
   // --- Stage change detection ---
   if (!stageId) return autoAssigned ? 'auto-assigned' : 'no-stage';
 
   const stageMap = await fetchPipelineStages();
   const stageName = (stageMap[stageId] || '').toLowerCase();
   console.log(`[WEBHOOK] ${contactName}: stage="${stageName}"`);
+
+  // Close any active AI conversations when stage moves to excluded stage
+  if (contactId && AI_EXCLUDED_STAGES.some(kw => stageName.includes(kw))) {
+    try {
+      await supabaseAdmin.from('ai_conversations')
+        .update({ status: 'completed', updated_at: new Date().toISOString() })
+        .eq('contact_id', contactId)
+        .eq('status', 'active');
+      console.log(`[WEBHOOK] Closed AI conversations for ${contactName} — stage is ${stageName}`);
+    } catch (e) {}
+  }
 
   const prefix = autoAssigned ? 'auto-assigned+' : '';
 
