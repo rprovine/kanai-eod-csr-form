@@ -40,84 +40,72 @@ const RULES = {
 };
 
 /**
- * Check if a contact has any inbound messages (customer actually responded).
- * If they responded even once, they're a real lead — don't auto-close.
+ * Get all messages for a contact (SMS, chat, calls — all touchpoints).
+ * GHL message types: 1=call, 2=SMS, 11=Facebook, 18=Instagram, 24=IVR call
+ * Calls have direction "inbound"/"outbound" just like messages.
  */
-async function hasInboundResponse(contactId) {
-  if (!contactId) return false;
+async function getContactMessages(contactId) {
+  if (!contactId) return [];
 
   const locationId = process.env.GHL_LOCATION_ID;
   try {
-    // Find conversation for this contact
-    const convParams = new URLSearchParams({ locationId, contactId, limit: '1' });
+    const convParams = new URLSearchParams({ locationId, contactId, limit: '5' });
     const convRes = await fetch(
       `${GHL_API_BASE}/conversations/search?${convParams}`,
       { headers: ghlHeaders() }
     );
-    if (!convRes.ok) return false;
+    if (!convRes.ok) return [];
     const convData = await convRes.json();
-    const conversation = (convData.conversations || [])[0];
-    if (!conversation?.id) return false;
+    const conversations = convData.conversations || [];
 
-    // Get messages in the conversation
-    const msgRes = await fetch(
-      `${GHL_API_BASE}/conversations/${conversation.id}/messages`,
-      { headers: ghlHeaders() }
-    );
-    if (!msgRes.ok) return false;
-    const msgData = await msgRes.json();
-    const messages = msgData.messages?.messages || msgData.messages || [];
-
-    // Check for ANY inbound message (customer sent something)
-    for (const msg of messages) {
-      if ((msg.direction || '').toLowerCase() === 'inbound') {
-        return true;
-      }
+    const allMessages = [];
+    for (const conv of conversations) {
+      if (!conv.id) continue;
+      const msgRes = await fetch(
+        `${GHL_API_BASE}/conversations/${conv.id}/messages`,
+        { headers: ghlHeaders() }
+      );
+      if (!msgRes.ok) continue;
+      const msgData = await msgRes.json();
+      const messages = msgData.messages?.messages || msgData.messages || [];
+      allMessages.push(...messages);
     }
+    return allMessages;
   } catch (err) {
-    console.error(`Error checking inbound for ${contactId}:`, err);
+    console.error(`Error fetching messages for ${contactId}:`, err);
+    return [];
   }
+}
 
+/**
+ * Check if a contact has any inbound touchpoint (message, call, or reply).
+ * Counts ALL channels: SMS, calls, Facebook, Instagram, chat.
+ * If they responded or called even once, they're a real lead — don't auto-close.
+ */
+async function hasInboundResponse(contactId) {
+  const messages = await getContactMessages(contactId);
+  for (const msg of messages) {
+    if ((msg.direction || '').toLowerCase() === 'inbound') {
+      return true;
+    }
+  }
   return false;
 }
 
 /**
- * Count outbound contact attempts (distinct days with outbound messages).
+ * Count outbound contact attempts across ALL channels (distinct days).
+ * Includes: calls made, SMS sent, chat messages, social messages.
  */
 async function countOutboundAttempts(contactId) {
-  if (!contactId) return 0;
-
-  const locationId = process.env.GHL_LOCATION_ID;
-  try {
-    const convParams = new URLSearchParams({ locationId, contactId, limit: '1' });
-    const convRes = await fetch(
-      `${GHL_API_BASE}/conversations/search?${convParams}`,
-      { headers: ghlHeaders() }
-    );
-    if (!convRes.ok) return 0;
-    const convData = await convRes.json();
-    const conversation = (convData.conversations || [])[0];
-    if (!conversation?.id) return 0;
-
-    const msgRes = await fetch(
-      `${GHL_API_BASE}/conversations/${conversation.id}/messages`,
-      { headers: ghlHeaders() }
-    );
-    if (!msgRes.ok) return 0;
-    const msgData = await msgRes.json();
-    const messages = msgData.messages?.messages || msgData.messages || [];
-
-    const outboundDays = new Set();
-    for (const msg of messages) {
-      if ((msg.direction || '').toLowerCase() === 'outbound') {
-        const day = (msg.dateAdded || '').split('T')[0];
-        if (day) outboundDays.add(day);
-      }
+  const messages = await getContactMessages(contactId);
+  const outboundDays = new Set();
+  for (const msg of messages) {
+    if ((msg.direction || '').toLowerCase() === 'outbound') {
+      const day = (msg.dateAdded || '').split('T')[0];
+      if (day) outboundDays.add(day);
     }
-    return outboundDays.size;
-  } catch {
-    return 0;
   }
+  return outboundDays.size;
 }
 
 export default async function handler(req, res) {
