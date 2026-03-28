@@ -1,0 +1,271 @@
+/**
+ * Auto-close stale/unresponsive leads.
+ *
+ * Rules:
+ * 1. "New Lead" 48+ hours, 3+ contact attempts, zero inbound response → Non-Qualified
+ *    Reason: "No Response - Unqualified"
+ *
+ * 2. "Contacted" 7+ days, attempts made, zero inbound response → Non-Qualified
+ *    Reason: "No Response After Contact - Unqualified"
+ *
+ * 3. "Quoted"/"Estimate Completed" 14+ days, no response → JR Lost or DR Lost
+ *    Reason: "No Response After Quote - 14 Day Auto-Close"
+ *
+ * Leads with ANY inbound response (two-way conversation) are NOT touched.
+ *
+ * Runs via cron: once daily at 3 AM HST (13:00 UTC)
+ */
+
+import { authorize } from '../_lib/authorize.js';
+import { supabaseAdmin } from '../_lib/supabase-admin.js';
+import {
+  fetchOpportunities,
+  fetchPipelineStages,
+  updateOpportunity,
+  getCustomField,
+  toHawaiiDate,
+  ghlHeaders,
+  CF,
+} from '../_lib/ghl-client.js';
+
+export const maxDuration = 120;
+
+const GHL_API_BASE = 'https://services.leadconnectorhq.com';
+
+// How long before auto-close (in hours)
+const RULES = {
+  new_lead: { hoursStale: 48, minAttempts: 3 },
+  contacted: { hoursStale: 168 },       // 7 days
+  quoted: { hoursStale: 336 },           // 14 days
+};
+
+/**
+ * Check if a contact has any inbound messages (customer actually responded).
+ * If they responded even once, they're a real lead — don't auto-close.
+ */
+async function hasInboundResponse(contactId) {
+  if (!contactId) return false;
+
+  const locationId = process.env.GHL_LOCATION_ID;
+  try {
+    // Find conversation for this contact
+    const convParams = new URLSearchParams({ locationId, contactId, limit: '1' });
+    const convRes = await fetch(
+      `${GHL_API_BASE}/conversations/search?${convParams}`,
+      { headers: ghlHeaders() }
+    );
+    if (!convRes.ok) return false;
+    const convData = await convRes.json();
+    const conversation = (convData.conversations || [])[0];
+    if (!conversation?.id) return false;
+
+    // Get messages in the conversation
+    const msgRes = await fetch(
+      `${GHL_API_BASE}/conversations/${conversation.id}/messages`,
+      { headers: ghlHeaders() }
+    );
+    if (!msgRes.ok) return false;
+    const msgData = await msgRes.json();
+    const messages = msgData.messages?.messages || msgData.messages || [];
+
+    // Check for ANY inbound message (customer sent something)
+    for (const msg of messages) {
+      if ((msg.direction || '').toLowerCase() === 'inbound') {
+        return true;
+      }
+    }
+  } catch (err) {
+    console.error(`Error checking inbound for ${contactId}:`, err);
+  }
+
+  return false;
+}
+
+/**
+ * Count outbound contact attempts (distinct days with outbound messages).
+ */
+async function countOutboundAttempts(contactId) {
+  if (!contactId) return 0;
+
+  const locationId = process.env.GHL_LOCATION_ID;
+  try {
+    const convParams = new URLSearchParams({ locationId, contactId, limit: '1' });
+    const convRes = await fetch(
+      `${GHL_API_BASE}/conversations/search?${convParams}`,
+      { headers: ghlHeaders() }
+    );
+    if (!convRes.ok) return 0;
+    const convData = await convRes.json();
+    const conversation = (convData.conversations || [])[0];
+    if (!conversation?.id) return 0;
+
+    const msgRes = await fetch(
+      `${GHL_API_BASE}/conversations/${conversation.id}/messages`,
+      { headers: ghlHeaders() }
+    );
+    if (!msgRes.ok) return 0;
+    const msgData = await msgRes.json();
+    const messages = msgData.messages?.messages || msgData.messages || [];
+
+    const outboundDays = new Set();
+    for (const msg of messages) {
+      if ((msg.direction || '').toLowerCase() === 'outbound') {
+        const day = (msg.dateAdded || '').split('T')[0];
+        if (day) outboundDays.add(day);
+      }
+    }
+    return outboundDays.size;
+  } catch {
+    return 0;
+  }
+}
+
+export default async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (!authorize(req)) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const [opportunities, stageMap] = await Promise.all([
+      fetchOpportunities(),
+      fetchPipelineStages(),
+    ]);
+
+    const now = Date.now();
+    const results = { moved_to_non_qualified: 0, moved_to_lost: 0, skipped_has_response: 0, checked: 0, errors: [] };
+
+    // Build reverse stage map: name → id
+    const stageIdByName = {};
+    for (const [id, name] of Object.entries(stageMap)) {
+      stageIdByName[name.toLowerCase()] = id;
+    }
+
+    // Find target stage IDs
+    const nonQualifiedStageId = Object.entries(stageMap).find(([, name]) =>
+      name.toLowerCase().includes('non-qualified') || name.toLowerCase().includes('not qualified')
+    )?.[0];
+
+    const jrLostStageId = Object.entries(stageMap).find(([, name]) =>
+      name.toLowerCase() === 'jr lost' || name.toLowerCase() === 'jr - lost'
+    )?.[0] || Object.entries(stageMap).find(([, name]) =>
+      name.toLowerCase().includes('lost') && name.toLowerCase().includes('jr')
+    )?.[0];
+
+    const drLostStageId = Object.entries(stageMap).find(([, name]) =>
+      name.toLowerCase() === 'dr lost' || name.toLowerCase() === 'dr - lost'
+    )?.[0] || Object.entries(stageMap).find(([, name]) =>
+      name.toLowerCase().includes('lost') && name.toLowerCase().includes('dr')
+    )?.[0];
+
+    // Fallback: generic lost stage
+    const genericLostStageId = Object.entries(stageMap).find(([, name]) =>
+      name.toLowerCase() === 'lost'
+    )?.[0];
+
+    console.log(`Stages found: non-qualified=${nonQualifiedStageId}, JR lost=${jrLostStageId}, DR lost=${drLostStageId}, generic lost=${genericLostStageId}`);
+
+    for (const opp of opportunities) {
+      const stageName = stageMap[opp.pipelineStageId] || opp.pipelineStageName || '';
+      const stageL = stageName.toLowerCase();
+      const contactId = opp.contact?.id || opp.contactId || '';
+      const contactName = opp.contact?.name || opp.name || 'Unknown';
+      const lastUpdate = new Date(opp.lastStageChangeAt || opp.updatedAt || opp.createdAt);
+      const hoursStale = (now - lastUpdate.getTime()) / (1000 * 60 * 60);
+
+      let rule = null;
+      let targetStageId = null;
+      let lostReason = '';
+
+      // Rule 1: New Lead, 48+ hours, 3+ attempts, no response
+      if (stageL.includes('new lead') || stageL === 'new') {
+        if (hoursStale >= RULES.new_lead.hoursStale) {
+          rule = 'new_lead';
+          targetStageId = nonQualifiedStageId;
+          lostReason = 'No Response - Unqualified';
+        }
+      }
+      // Rule 2: Contacted, 7+ days, no response
+      else if (stageL.includes('contacted') || stageL.includes('follow-up') || stageL.includes('follow up') || stageL.includes('nurture')) {
+        if (hoursStale >= RULES.contacted.hoursStale) {
+          rule = 'contacted';
+          targetStageId = nonQualifiedStageId;
+          lostReason = 'No Response After Contact - Unqualified';
+        }
+      }
+      // Rule 3: Quoted/Estimate Completed, 14+ days
+      else if (stageL.includes('quot') || stageL.includes('estimate completed') || stageL.includes('agreement sent')) {
+        if (hoursStale >= RULES.quoted.hoursStale) {
+          rule = 'quoted';
+          // Determine JR vs DR from stage name
+          if (stageL.includes('dr')) {
+            targetStageId = drLostStageId || genericLostStageId;
+          } else {
+            targetStageId = jrLostStageId || genericLostStageId;
+          }
+          lostReason = 'No Response After Quote - 14 Day Auto-Close';
+        }
+      }
+
+      if (!rule || !targetStageId) continue;
+
+      results.checked++;
+
+      // Check if lead has actually responded (two-way conversation)
+      const responded = await hasInboundResponse(contactId);
+      if (responded) {
+        results.skipped_has_response++;
+        continue;
+      }
+
+      // For new leads, verify minimum contact attempts
+      if (rule === 'new_lead') {
+        const attempts = await countOutboundAttempts(contactId);
+        if (attempts < RULES.new_lead.minAttempts) continue;
+      }
+
+      // Move the opportunity
+      try {
+        const updateFields = { pipelineStageId: targetStageId };
+
+        const ok = await updateOpportunity(opp.id, updateFields);
+        if (ok) {
+          // Set lost reason custom field
+          if (lostReason) {
+            await fetch(`${GHL_API_BASE}/contacts/${contactId}`, {
+              method: 'PUT',
+              headers: ghlHeaders(),
+              body: JSON.stringify({
+                customFields: [
+                  { id: CF.LOST_REASON, field_value: lostReason },
+                ],
+              }),
+            });
+          }
+
+          if (rule === 'quoted') {
+            results.moved_to_lost++;
+          } else {
+            results.moved_to_non_qualified++;
+          }
+          console.log(`Auto-closed: ${contactName} (${rule}) → ${stageName} → ${lostReason}`);
+        }
+      } catch (err) {
+        results.errors.push({ name: contactName, error: err.message });
+      }
+
+      // Rate limit: don't hammer GHL API
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    return res.status(200).json({
+      message: 'Auto-close complete',
+      ...results,
+    });
+  } catch (error) {
+    console.error('Auto-close stale error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}

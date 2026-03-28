@@ -8,7 +8,8 @@
     "api/csr/morning-briefing.js": { "maxDuration": 120 },
     "api/ghl/lost-reason-check.js": { "maxDuration": 60 },
     "api/ghl/followup-sync.js": { "maxDuration": 120 },
-    "api/csr/revenue-attribution.js": { "maxDuration": 120 }
+    "api/csr/revenue-attribution.js": { "maxDuration": 120 },
+    "api/ghl/auto-close-stale.js": { "maxDuration": 120 }
   },
   "headers": [
     {
@@ -39,6 +40,7 @@
     { "path": "/api/ghl/lost-reason-check", "schedule": "*/10 0-4,18-23 * * *" },
     { "path": "/api/ghl/followup-sync", "schedule": "0 18,20,22,0,2,4 * * *" },
     { "path": "/api/csr/revenue-attribution", "schedule": "0 9 * * *" },
-    { "path": "/api/ghl/opportunity-sync", "schedule": "*/5 0-4,18-23 * * *" }
+    { "path": "/api/ghl/opportunity-sync", "schedule": "*/5 0-4,18-23 * * *" },
+    { "path": "/api/ghl/auto-close-stale", "schedule": "0 13 * * *" }
   ]
 }
