@@ -11,7 +11,6 @@ import PipelineDashboard from './PipelineDashboard'
 import TrendCharts from './TrendCharts'
 import ConversionFunnel from './ConversionFunnel'
 import LeadConversionMetrics from './LeadConversionMetrics'
-import QualityScorecard from './QualityScorecard'
 import FollowUpBacklog from './FollowUpBacklog'
 import WorkloadDistribution from './WorkloadDistribution'
 import WebhookTimeline from './WebhookTimeline'
@@ -680,9 +679,6 @@ export default function CSRReportsView() {
 
           {/* CSR Workload Distribution */}
           <WorkloadDistribution dateRange={dateRange} />
-
-          {/* Quality Scorecard */}
-          <QualityScorecard dateRange={dateRange} />
 
           {/* Follow-Up Backlog */}
           <FollowUpBacklog />

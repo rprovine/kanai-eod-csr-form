@@ -103,11 +103,20 @@ export default async function handler(req, res) {
       }
     }
 
+    // Show what Workiz returned for debugging
+    const workizDetails = Object.entries(workizMap).map(([key, val]) => ({
+      key,
+      jobNumber: val.jobNumber,
+      revenue: val.revenue,
+      status: val.status,
+    }));
+
     return res.status(200).json({
       total_checked: jobs.length,
       workizMatched: Object.keys(workizMap).length,
       jrMatched: Object.keys(jrRevMap).length,
       updated,
+      workizDetails: workizDetails.length > 0 ? workizDetails : undefined,
       errors: errors.length > 0 ? errors : undefined,
     });
   } catch (error) {

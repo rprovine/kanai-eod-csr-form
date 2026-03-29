@@ -24,16 +24,26 @@ export async function getJobsByUUID(uuids) {
     const jobs = result.data || [];
     if (jobs.length === 0) break;
 
+    // Log sample and matching jobs revenue fields
+    if (page === 0) {
+      console.log('[workiz-uuid] Sample job keys:', Object.keys(jobs[0] || {}));
+    }
+
     for (const job of jobs) {
       const uuid = job.UUID || '';
       const serialId = String(job.SerialId || '');
       // Match by UUID or SerialId
       if (targetSet.has(uuid) || targetSet.has(serialId)) {
         const key = targetSet.has(uuid) ? uuid : serialId;
+        const subtotal = parseFloat(job.SubTotal) || 0;
+        const totalPrice = parseFloat(job.JobTotalPrice) || 0;
+        const amountDue = parseFloat(job.JobAmountDue) || 0;
+        const revenue = subtotal || totalPrice || amountDue;
+        console.log(`[workiz-uuid] Match #${serialId}: SubTotal=${job.SubTotal} JobTotalPrice=${job.JobTotalPrice} AmountDue=${job.JobAmountDue} → revenue=${revenue}`);
         found[key] = {
           jobNumber: serialId,
           uuid,
-          revenue: parseFloat(job.SubTotal || job.JobTotalPrice || 0),
+          revenue,
           status: job.Status || '',
           customerName: [job.FirstName, job.LastName].filter(Boolean).join(' '),
           jobType: job.JobType || '',

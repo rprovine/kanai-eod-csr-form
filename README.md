@@ -137,7 +137,9 @@ Leads move to "Needs Follow-Up" after first contact and stay there until booked,
 Booking Rate = Booked / (Booked + Quoted + Follow-up + Lost)
 ```
 
-**Non-qualified leads are excluded from the denominator** so they don't drag down the booking rate. They are tracked separately.
+**Non-qualified leads are excluded from the denominator** so they don't drag down the booking rate. They are tracked separately as "Not Qualified" in the Dispositions section.
+
+**Note:** The "Lead Conversion by CSR" section was removed from reports because it used a different data source (`lead_activity_log` with unique GHL opportunities) that produced different percentages than the Leaderboard (which uses EOD form dispositions). All views now use the same booking rate formula for consistency.
 
 ### Speed-to-Lead Calculation
 
@@ -166,6 +168,48 @@ The Pipeline Check section shows:
 - Stale lead names, current stage, days since last update, and contact attempt count
 - Gold indicator for leads needing more follow-up (< 3 contacts), green when 3+ reached
 - Red warning for leads moved to Lost with <3 contacts and no lost reason
+
+### Auto-Close for Stale & Unresponsive Leads
+
+The system automatically closes leads that have gone stale, running daily at 3:00 AM HST via the `/api/ghl/auto-close-stale` cron endpoint.
+
+**Three auto-close rules:**
+
+| Rule | Trigger | Result | Lost Reason |
+|------|---------|--------|-------------|
+| New Lead Timeout | 48+ hours in New Lead, 3+ contact attempts, no inbound response | → Non-Qualified Lead | Auto-closed: No response after 3+ attempts |
+| Follow-Up Timeout | 7+ days in Contacted/Needs Follow-Up, no inbound response | → Non-Qualified Lead | Auto-closed: No response in 7 days |
+| Quote Expired | 14+ days in Quoted/Estimate Completed | → JR Lost or DR Lost | Auto-closed: Quote expired after 14 days |
+
+**How it counts responses:** Checks ALL touchpoints — calls, SMS, chat, Facebook, Instagram. A lead is only auto-closed if there's been zero inbound activity from the contact across all channels.
+
+**AI Conversation Closing:** When an opportunity moves to a non-qualified or lost stage (including auto-close), the system also closes the associated AI conversation in GHL via the `/api/ghl/webhook-opportunity` endpoint. This prevents the AI re-engage flow from contacting closed leads.
+
+### Opportunity Sync for All Lead Sources
+
+The `/api/ghl/opportunity-sync` endpoint catches leads from all sources (Workiz, web forms, Facebook, etc.) that may not trigger the standard IVR flow:
+
+1. GHL workflow fires on "Contact Created" → sends webhook to opportunity-sync
+2. Checks for existing active opportunities for the contact (30-day lookback)
+3. If no active opportunity exists → creates one in the pipeline at "New Lead" stage
+4. If active opportunity exists → skips (prevents duplicates)
+
+**Active vs Resolved stages:** An opportunity is "active" if it's NOT in a terminal stage (Booked, Lost, Non-Qualified, Won). Active stages include: New Lead, Contacted, Needs Follow-Up, Quoted, Estimate Scheduled, Agreement Sent, etc.
+
+### Qualified Leads Metric
+
+The system tracks qualified leads across all report views:
+
+```
+Qualified Leads = Booked + Quoted + Follow-Up + Lost
+```
+
+Excludes Not Qualified (spam, wrong number, out of area) and Voicemail/No Answer. This metric appears in:
+- **Dispositions section** — 3-column summary: Total Dispositions | Qualified Leads | Booked
+- **KPI Dashboard** — Qualified Leads row with booked count
+- **Compensation Preview** — Shows Qualified → Booked conversion
+- **CSR Leaderboard** — Qualified column in desktop table + mobile cards
+- **Pipeline Dashboard** — Qualified Leads bar in the funnel visualization
 
 ### Field Source Badges
 
@@ -502,6 +546,7 @@ Environment variables are configured in the Vercel project settings.
 | Daily 7:45 AM (Mon-Fri) | `/api/csr/morning-briefing` | CSR morning briefing SMS (stale leads, new leads, pipeline) |
 | Daily 4:30 PM | `/api/csr/submission-reminder` | SMS each CSR who hasn't submitted + manager summary |
 | Daily 4:30 PM (Mon-Fri) | `/api/csr/shift-handoff` | Shift handoff summary of unworked leads |
+| Daily 3:00 AM | `/api/ghl/auto-close-stale` | Auto-close stale/unresponsive leads (3 rules — see above) |
 | Daily 11 PM | `/api/workiz/revenue-sync` | Backfill $0 revenue on jobs booked from Workiz |
 | Monday 7 AM | `/api/reports/weekly-executive` | Auto-generate weekly executive report, SMS owner with link |
 
@@ -646,6 +691,7 @@ Receives real-time pipeline stage change events from GHL. Triggered by a GHL wor
 **Actions taken:**
 - **Booked stage** → Looks up Workiz job by custom field UUID, updates revenue in `csr_eod_jobs_booked`
 - **Lost stage** → Checks contact attempts (<3) and lost reason; sends manager SMS if premature
+- **Non-Qualified / Lost** → Closes associated AI conversation in GHL (prevents re-engage from contacting closed leads)
 - **Unassigned** → Auto-assigns to first CSR who responded in the conversation
 - **All events** → Logged to `webhook_log` table with resolved stage name and action taken
 
@@ -675,6 +721,26 @@ Smart opportunity creation for inbound calls. Called by GHL workflow instead of 
 **Response:** `{ "action": "created" | "skipped" | "error", ... }`
 
 See `SMART_OPPORTUNITY_FLOW.md` for full documentation.
+
+### `POST /api/ghl/opportunity-sync`
+
+Catches leads from all sources (Workiz, web forms, Facebook) that bypass the IVR flow. Called by GHL "Contact Created" workflow.
+
+**Flow:**
+1. Receives contact ID/name/phone from GHL workflow
+2. Checks for existing active opportunities (30-day lookback)
+3. If no active opportunity → creates one at "New Lead" stage
+4. If active opportunity exists → skips
+
+**Difference from smart-opportunity:** `smart-opportunity` handles IVR inbound calls. `opportunity-sync` handles all other lead sources (web forms, Facebook leads, Workiz-created contacts).
+
+### `GET /api/ghl/auto-close-stale`
+
+Daily auto-close for stale and unresponsive leads. Runs at 3:00 AM HST.
+
+**Rules:** See "Auto-Close for Stale & Unresponsive Leads" section above.
+
+**Response:** `{ "processed": 45, "closed": 8, "reasons": { "no_response_48h": 3, "no_response_7d": 2, "quote_expired_14d": 3 } }`
 
 ### `GET /api/ghl/stages`
 
