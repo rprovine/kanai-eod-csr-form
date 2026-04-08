@@ -18,7 +18,7 @@ export function formatDateLocal(date) {
 
 export function getWeekRange(offsetWeeks = 0) {
   const now = new Date()
-  const dayOfWeek = now.getDay()
+  const dayOfWeek = now.getDay() // Sun=0, Mon=1, etc.
   const startOfWeek = new Date(now)
   startOfWeek.setDate(now.getDate() - dayOfWeek + (offsetWeeks * 7))
   const endOfWeek = new Date(startOfWeek)
@@ -89,5 +89,6 @@ export const DATE_PRESETS = [
   { label: 'Pay Period', getValue: () => { const pp = getCurrentPayPeriod(); return { start: pp.start, end: pp.end } } },
   { label: 'Last Pay Period', getValue: () => { const pp = getPreviousPayPeriod(); return { start: pp.start, end: pp.end } } },
   { label: 'This Month', getValue: () => getMonthRange(0) },
+  { label: 'Last Month', getValue: () => getMonthRange(-1) },
   { label: 'Custom', getValue: () => null },
 ]
