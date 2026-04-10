@@ -1,4 +1,4 @@
-import { Truck, ClipboardList, BarChart3 } from 'lucide-react'
+import { Truck, ClipboardList, BarChart3, GraduationCap, Bot } from 'lucide-react'
 
 export default function FormLayout({ children, view = 'form', onViewChange }) {
   return (
@@ -40,13 +40,35 @@ export default function FormLayout({ children, view = 'form', onViewChange }) {
                 <BarChart3 className="w-3.5 h-3.5" />
                 Reports
               </button>
+              <button
+                onClick={() => onViewChange('training')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  view === 'training'
+                    ? 'bg-kanai-blue text-white'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <GraduationCap className="w-3.5 h-3.5" />
+                Training
+              </button>
+              <button
+                onClick={() => onViewChange('ai-ops')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                  view === 'ai-ops'
+                    ? 'bg-kanai-blue text-white'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Bot className="w-3.5 h-3.5" />
+                AI Ops
+              </button>
             </div>
           )}
         </div>
       </header>
 
       {/* Main content */}
-      <main className={`mx-auto px-4 py-6 ${view === 'reports' ? 'max-w-6xl' : 'max-w-4xl'}`}>
+      <main className={`mx-auto px-4 py-6 ${view === 'form' ? 'max-w-4xl' : 'max-w-6xl'}`}>
         {children}
       </main>
     </div>

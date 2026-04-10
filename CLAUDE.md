@@ -57,7 +57,36 @@ This is a Vite + React 19 SPA (NOT Next.js). Backend is Vercel serverless functi
 - Revenue sync from Workiz (daily 11 PM)
 - Weekly executive report (Monday 7 AM)
 
+## Unified AI Orchestration (added 2026-04-08)
+
+**Customer Profile API** (`api/customer/profile.js`) — Unified aggregator that fetches from 7 sources (GHL contacts/opps/conversations, Workiz jobs, Docket events, voice calls, SMS conversations, CSR interactions). Merges duplicate GHL contacts. Cached 60s. Used by Kai voice, SMS AI, re-engage cron, and auto-close.
+
+**AI Orchestration Events** (`ai_orchestration_events` table) — Every AI system logs decisions here. Viewable in the **AI Ops** dashboard tab in the CSR EOD app.
+
+**AI Ops Dashboard** (`src/components/reports/AIOpsView.jsx`) — Real-time observability across all AI systems. Filters by system, time range. Shows event stream, context injection stats, errors.
+
+**Centralized Pricing** (`pricing` Supabase table + `api/pricing/`) — 59 pricing rows, public read API. Source of truth for all AI systems.
+
+**Auto-Close Protection** — Existing Workiz customers and active dumpster rentals are protected from auto-close. SMS alert sent to management when triggered.
+
+**Review Request** — Workiz job completion webhook triggers auto-SMS asking customer for Google review.
+
+**GHL User Sync** (`api/ghl/sync-users.js`) — Syncs GHL users to `ghl_user_mapping` table.
+
+**KPI Validation** (`api/csr/validate-kpis.js`) — Server-side validation of CSR self-reported numbers against GHL data.
+
+**Booking Slots** (`ai_booking_slots` table) — Tracks AI-booked time slots (2-hour windows Mon-Sat, 2 slots weekday, 1 Saturday).
+
+## Env Var Gotchas
+
+- **WORKIZ_API_TOKEN** may have trailing literal `\n` (2 chars, not newline). Code uses `.replace(/\\n$/, '').trim()`.
+- **GHL_PIPELINE_ID** may have trailing newline. Code trims it.
+- Workiz API is **read-only** — `/job/create/` returns 401. Job creation is manual via dispatcher.
+- Workiz `/job/all/` does NOT accept `?phone=` — returns 400. Must paginate and filter client-side.
+
 ## Related Projects
 
-- **kanai-csr-coaching** — AI call scoring system, shares the same Supabase project and `csr_employees` table
-- **kanai-field-supervisor-eodform** — Field supervisor EOD form (separate Supabase tables)
+- **kanai-csr-coaching** — AI call scoring system, shares the same Supabase project and `csr_employees` table. Extended to score Kai voice + SMS AI conversations.
+- **kanai-field-supervisor-eodform** — Field supervisor EOD form + SMS AI router + re-engage cron
+- **kanai-ai-voice-chatbot** — Kai voice agent (Retell) + website chatbot (LangChain) + Customer Profile tools
+- **kanai-website** — Next.js public website with Kai chatbot widget

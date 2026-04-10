@@ -105,6 +105,28 @@ export async function saveEodReport(formData, { ghlSuggestions } = {}) {
   if (reportFields.shift_start === '') reportFields.shift_start = null
   if (reportFields.shift_end === '') reportFields.shift_end = null
 
+  // Server-side KPI validation (non-blocking — logs discrepancies for audit)
+  try {
+    const ghlUserId = reportFields.ghl_user_id || null
+    if (ghlUserId) {
+      fetch('/api/csr/validate-kpis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employee_id: reportFields.employee_id,
+          ghl_user_id: ghlUserId,
+          report_date: reportFields.report_date,
+          reported: {
+            disp_booked: reportFields.disp_booked,
+            disp_lost: reportFields.disp_lost,
+            disp_quoted: reportFields.disp_quoted,
+            total_inbound_calls: reportFields.total_inbound_calls,
+          },
+        }),
+      }).catch(() => {}) // Fire-and-forget, never block submission
+    }
+  } catch {}
+
   // Add server-side metadata
   const reportData = {
     ...reportFields,

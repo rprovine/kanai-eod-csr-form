@@ -17,6 +17,8 @@ import NotesSection from './components/eod-form/NotesSection'
 import BonusTrackingSection from './components/eod-form/BonusTrackingSection'
 import KPIDashboardSection from './components/eod-form/KPIDashboardSection'
 import CSRReportsView from './components/reports/CSRReportsView'
+import TrainingView from './components/training/TrainingView'
+import AIOpsView from './components/reports/AIOpsView'
 import { useEodForm } from './hooks/useEodForm'
 import { useAutoSave, clearSavedDraft } from './hooks/useAutoSave'
 import { useGhlPrefill } from './hooks/useGhlPrefill'
@@ -230,10 +232,26 @@ export default function App() {
     }
   }
 
+  if (view === 'training') {
+    return (
+      <FormLayout view="training" onViewChange={setView}>
+        <TrainingView />
+      </FormLayout>
+    )
+  }
+
   if (view === 'reports') {
     return (
       <FormLayout view="reports" onViewChange={setView}>
         <CSRReportsView />
+      </FormLayout>
+    )
+  }
+
+  if (view === 'ai-ops') {
+    return (
+      <FormLayout view="ai-ops" onViewChange={setView}>
+        <AIOpsView />
       </FormLayout>
     )
   }

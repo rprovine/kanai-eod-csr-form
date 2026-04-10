@@ -42,6 +42,15 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Database not configured' });
   }
 
+  if (process.env.AI_ORCHESTRATION_KILL_SWITCH === 'true') {
+    await supabaseAdmin.from('ai_orchestration_events').insert({
+      system: 'auto_assign',
+      decision: 'killed_by_killswitch',
+      reason: 'AI_ORCHESTRATION_KILL_SWITCH=true',
+    }).then(() => {}).catch(() => {});
+    return res.status(200).json({ killed: true, reason: 'AI_ORCHESTRATION_KILL_SWITCH' });
+  }
+
   const locationId = process.env.GHL_LOCATION_ID;
   const apiKey = process.env.GHL_API_KEY;
   if (!locationId || !apiKey) {
@@ -101,6 +110,10 @@ export default async function handler(req, res) {
       // Stop if pagination is cycling or last page
       if (newCount === 0 || opps.length < 100) break;
       page++;
+    }
+
+    if (page >= 5) {
+      console.warn(`[auto-assign] WARNING: Pagination hit 5-page limit (${seenIds.size} total opps seen, ${unassignedOpps.length} unassigned). Some opportunities may not have been processed.`);
     }
 
     if (unassignedOpps.length === 0) {

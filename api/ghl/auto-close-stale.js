@@ -27,6 +27,31 @@ import {
   ghlHeaders,
   CF,
 } from '../_lib/ghl-client.js';
+import { sendNotification } from '../_lib/ghl-notify.js';
+
+// Lightweight Customer Profile API check — only used for leads about to be
+// auto-closed, to protect existing Workiz customers and active dumpster rentals.
+const PROFILE_API_URL = 'https://kanai-eod-csr-form.vercel.app/api/customer/profile';
+async function isProtectedCustomer(phone) {
+  if (!phone) return { protected: false };
+  const secret = (process.env.CRON_SECRET || '').trim();
+  if (!secret) return { protected: false };
+  try {
+    const res = await fetch(`${PROFILE_API_URL}?phone=${encodeURIComponent(phone)}`, {
+      headers: { Authorization: `Bearer ${secret}` },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return { protected: false };
+    const profile = await res.json();
+    const sig = profile.signals || {};
+    if (sig.is_existing_workiz_customer) return { protected: true, reason: 'existing_workiz_customer' };
+    if (sig.has_active_dumpster_rental) return { protected: true, reason: 'active_dumpster_rental' };
+    if (sig.is_docket_customer) return { protected: true, reason: 'docket_customer' };
+    return { protected: false };
+  } catch {
+    return { protected: false }; // On failure, don't block auto-close
+  }
+}
 
 export const maxDuration = 120;
 
@@ -116,6 +141,15 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (!authorize(req)) return res.status(401).json({ error: 'Unauthorized' });
 
+  if (process.env.AI_ORCHESTRATION_KILL_SWITCH === 'true') {
+    await supabaseAdmin.from('ai_orchestration_events').insert({
+      system: 'auto_close',
+      decision: 'killed_by_killswitch',
+      reason: 'AI_ORCHESTRATION_KILL_SWITCH=true',
+    }).then(() => {}).catch(() => {});
+    return res.status(200).json({ killed: true, reason: 'AI_ORCHESTRATION_KILL_SWITCH' });
+  }
+
   try {
     const [opportunities, stageMap] = await Promise.all([
       fetchOpportunities(),
@@ -123,7 +157,7 @@ export default async function handler(req, res) {
     ]);
 
     const now = Date.now();
-    const results = { moved_to_non_qualified: 0, moved_to_lost: 0, skipped_has_response: 0, checked: 0, errors: [] };
+    const results = { moved_to_non_qualified: 0, moved_to_lost: 0, skipped_has_response: 0, skipped_existing_customer: 0, checked: 0, errors: [] };
 
     // Build reverse stage map: name → id
     const stageIdByName = {};
@@ -212,6 +246,35 @@ export default async function handler(req, res) {
       if (rule === 'new_lead') {
         const attempts = await countOutboundAttempts(contactId);
         if (attempts < RULES.new_lead.minAttempts) continue;
+      }
+
+      // Phase 7B: Protect existing customers from auto-close.
+      // If the contact is a known Workiz customer or has an active dumpster rental,
+      // skip auto-close — they're a real customer, not an unresponsive cold lead.
+      const contactPhone = opp.contact?.phone || '';
+      if (contactPhone) {
+        const check = await isProtectedCustomer(contactPhone);
+        if (check.protected) {
+          await supabaseAdmin.from('ai_orchestration_events').insert({
+            system: 'auto_close',
+            contact_id: contactId,
+            contact_phone: contactPhone,
+            decision: 'skipped_existing_customer',
+            reason: `Would have auto-closed (${rule}: ${lostReason}) but customer is ${check.reason}`,
+            context: { opportunity_id: opp.id, stage: stageName, hours_stale: Math.round(hoursStale) },
+          }).then(() => {}).catch(() => {});
+          console.log(`Auto-close SKIPPED: ${contactName} — ${check.reason}`);
+          results.skipped_existing_customer++;
+
+          // Alert management — an existing customer is sitting stale in the pipeline
+          try {
+            const RENO_PHONE = process.env.NOTIFY_PHONE || '8082012668';
+            await sendNotification(RENO_PHONE, null,
+              `⚠️ Auto-Close Alert: ${contactName} is a ${check.reason} but has been stale for ${Math.round(hoursStale)}h in "${stageName}". Auto-close was blocked — someone should follow up personally.`
+            );
+          } catch {}
+          continue;
+        }
       }
 
       // Move the opportunity

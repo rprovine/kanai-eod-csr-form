@@ -352,10 +352,9 @@ function calculateSpeedToLead(allDateMessages, ghlUserId, date, shiftHours) {
 }
 
 // Fetch ALL opportunities for the location using shared client
-// Uses pipeline filtering when GHL_PIPELINE_ID is set to avoid the 100-opp pagination cap
 async function fetchAllOpportunities() {
   const { fetchOpportunities } = await import('../_lib/ghl-client.js');
-  return fetchOpportunities({ limit: 10 });
+  return fetchOpportunities();
 }
 
 // Filter opportunities to those where this CSR had conversation activity
@@ -573,6 +572,15 @@ export default async function handler(req, res) {
     }
 
     const ghlUserId = mapping.ghl_user_id;
+
+    // Trigger auto-assign first so CSR attribution is fresh before we count
+    try {
+      const autoAssignUrl = `https://${req.headers.host}/api/ghl/auto-assign`;
+      await fetch(autoAssignUrl, {
+        headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` },
+        signal: AbortSignal.timeout(10000),
+      }).catch(() => {});
+    } catch {}
 
     // Fetch all messages, ALL opportunities, and assigned conversations in parallel
     const [messageData, allOpportunities, stageMap, assignedConvIds] = await Promise.all([

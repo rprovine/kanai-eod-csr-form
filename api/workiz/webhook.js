@@ -92,9 +92,10 @@ async function processWorkizWebhook({ jobUUID, serialId, status, subTotal }) {
 async function handleStatusChange(jobUUID, status) {
   const statusLower = status.toLowerCase();
 
-  // Completed jobs keep their current GHL stage (already booked)
+  // Completed jobs: keep their GHL stage + send review request
   if (statusLower === 'completed') {
-    console.log(`Workiz job ${jobUUID} completed, no GHL stage change needed`);
+    console.log(`Workiz job ${jobUUID} completed`);
+    await sendReviewRequest(jobUUID);
     return;
   }
 
@@ -122,6 +123,67 @@ async function handleStatusChange(jobUUID, status) {
     console.log(`Moved opportunity ${opp.id} to Lost (Workiz status: ${status})`);
   } else {
     console.error(`Failed to update opportunity ${opp.id} to Lost stage`);
+  }
+}
+
+const GOOGLE_REVIEW_URL = 'https://g.page/r/CRJGlAJIHCUxEBM/review';
+
+async function sendReviewRequest(jobUUID) {
+  try {
+    // Find the GHL contact for this job
+    const opp = await findOpportunityByWorkizUUID(jobUUID);
+    if (!opp) {
+      console.log(`[review-ask] No GHL opportunity for Workiz UUID ${jobUUID}, skipping`);
+      return;
+    }
+
+    const contactId = opp.contact?.id || opp.contactId;
+    if (!contactId) return;
+
+    // Don't send review request if we already sent one for this contact
+    if (supabaseAdmin) {
+      const { data: existing } = await supabaseAdmin
+        .from('ai_orchestration_events')
+        .select('id')
+        .eq('system', 'review_ask')
+        .eq('contact_id', contactId)
+        .limit(1);
+      if (existing?.length > 0) {
+        console.log(`[review-ask] Already sent review request to ${contactId}, skipping`);
+        return;
+      }
+    }
+
+    // Send the review request via GHL messaging
+    const message = `Aloha! Mahalo so much for choosing Kanai's — we really appreciate your business! If you have a moment, a Google review would mean the world to us:\n\n${GOOGLE_REVIEW_URL}\n\nMahalo! 🤙`;
+
+    const res = await fetch(`${GHL_API_BASE}/conversations/messages`, {
+      method: 'POST',
+      headers: ghlHeaders(),
+      body: JSON.stringify({
+        type: 'SMS',
+        contactId,
+        message,
+      }),
+    });
+
+    if (res.ok) {
+      console.log(`[review-ask] Review request sent to contact ${contactId}`);
+      // Log to orchestration events for tracking
+      if (supabaseAdmin) {
+        await supabaseAdmin.from('ai_orchestration_events').insert({
+          system: 'review_ask',
+          contact_id: contactId,
+          decision: 'review_request_sent',
+          reason: `Job ${jobUUID} completed, review request sent via SMS`,
+          context: { opportunity_id: opp.id, job_uuid: jobUUID },
+        }).then(() => {}).catch(() => {});
+      }
+    } else {
+      console.error(`[review-ask] Failed to send review request: HTTP ${res.status}`);
+    }
+  } catch (err) {
+    console.error(`[review-ask] Error:`, err.message);
   }
 }
 

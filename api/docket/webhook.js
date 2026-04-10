@@ -38,6 +38,15 @@ export default async function handler(req, res) {
   const customerName = body.customerName || body.customer_name || body.CustomerName
     || body.clientName || body.client_name || '';
   const price = parseFloat(body.price || body.Price || body.total || body.Total || 0);
+  const jobAddress = body.address || body.Address || body.jobAddress || body.job_address || '';
+  const assetType = body.assetType || body.asset_type || body.AssetType
+    || body.dumpsterSize || body.dumpster_size || body.size || '';
+  const stopType = body.stopType || body.stop_type || body.StopType
+    || body.type || body.Type || '';
+  const driverName = body.driverName || body.driver_name || body.DriverName
+    || body.assignedTo || body.assigned_to || '';
+  const scheduledDate = body.scheduledDate || body.scheduled_date || body.ScheduledDate
+    || body.date || body.Date || body.jobDate || body.job_date || '';
 
   if (!supabaseAdmin) {
     console.warn('Supabase not configured, cannot process Docket webhook');
@@ -55,6 +64,14 @@ export default async function handler(req, res) {
     if (!taskNumber && !customerName) {
       console.log('Docket webhook: no task identifier or customer name, skipping');
       return res.status(200).json({ received: true, matched: false, reason: 'No task identifier' });
+    }
+
+    // Store scheduled stop for nightly ops schedule preview
+    if (taskNumber && scheduledDate) {
+      await upsertScheduledStop({
+        taskNumber: String(taskNumber), customerName, jobAddress, assetType,
+        stopType, driverName, scheduledDate, price, status, payload: body,
+      });
     }
 
     const result = await processDocketWebhook({ taskNumber: String(taskNumber), status, customerName, price });
@@ -221,4 +238,39 @@ async function updateJobsBooked({ taskNumber, customerName, price }) {
   }
 
   return matched;
+}
+
+/**
+ * Upsert a scheduled stop into docket_scheduled_stops for nightly ops schedule preview.
+ */
+async function upsertScheduledStop({ taskNumber, customerName, jobAddress, assetType, stopType, driverName, scheduledDate, price, status, payload }) {
+  try {
+    // Parse the date — accept various formats
+    let dateStr = scheduledDate;
+    if (dateStr.includes('T') || dateStr.includes(' ')) {
+      dateStr = dateStr.split('T')[0].split(' ')[0];
+    }
+
+    await supabaseAdmin
+      .from('docket_scheduled_stops')
+      .upsert({
+        docket_id: taskNumber,
+        customer_name: customerName,
+        job_address: jobAddress,
+        asset_type: assetType,
+        stop_type: stopType,
+        driver_name: driverName,
+        scheduled_date: dateStr,
+        price: price > 0 ? price : null,
+        status: status,
+        raw_payload: payload,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'docket_id,scheduled_date' })
+      .then(() => {})
+      .catch(err => console.error('Docket scheduled stop upsert error:', err));
+
+    console.log(`Docket: stored scheduled stop ${taskNumber} for ${dateStr}`);
+  } catch (err) {
+    console.error('Docket scheduled stop error:', err);
+  }
 }
