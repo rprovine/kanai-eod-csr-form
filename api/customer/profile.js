@@ -442,6 +442,63 @@ async function fetchDocketEvents({ phone10, name, email }) {
   };
 }
 
+/**
+ * Fetch from the new Kanai Dumpster System (dispatch_tasks).
+ * This is the primary source — eventually replaces docket_webhook_events entirely.
+ * Searches by phone (best), then name fallback.
+ */
+async function fetchDispatchTasks({ phone10, name }) {
+  if (!supabaseAdmin || (!phone10 && !name)) return { found: false, tasks: [] };
+
+  let data = null;
+
+  // Try phone first
+  if (phone10) {
+    const last7 = phone10.slice(-7);
+    const res = await supabaseAdmin
+      .from('dispatch_tasks')
+      .select('id, task_number, task_type, status, customer_name, customer_phone, job_address, asset_size, scheduled_date, rental_end_date, completed_at, dump_location_id, tons_dumped')
+      .ilike('customer_phone', `%${last7}%`)
+      .order('scheduled_date', { ascending: false })
+      .limit(20);
+    data = res.data;
+  }
+
+  // Fallback to name
+  if ((!data || data.length === 0) && name) {
+    const res = await supabaseAdmin
+      .from('dispatch_tasks')
+      .select('id, task_number, task_type, status, customer_name, customer_phone, job_address, asset_size, scheduled_date, rental_end_date, completed_at, dump_location_id, tons_dumped')
+      .ilike('customer_name', name.trim())
+      .order('scheduled_date', { ascending: false })
+      .limit(20);
+    data = res.data;
+  }
+
+  if (!data || data.length === 0) return { found: false, tasks: [] };
+
+  // Derive active rental: most recent drop_off that's not completed/cancelled and no later pickup completed
+  const activeDropOff = data.find(t =>
+    t.task_type === 'drop_off' &&
+    t.status !== 'completed' &&
+    t.status !== 'cancelled'
+  );
+
+  return {
+    found: true,
+    tasks: data,
+    total_tasks: data.length,
+    active_rental: activeDropOff ? {
+      task_number: activeDropOff.task_number,
+      asset_size: activeDropOff.asset_size,
+      address: activeDropOff.job_address,
+      scheduled_date: activeDropOff.scheduled_date,
+      rental_end_date: activeDropOff.rental_end_date,
+    } : null,
+    has_active_rental: !!activeDropOff,
+  };
+}
+
 async function fetchCsrInteractions(contactId) {
   if (!supabaseAdmin || !contactId) return [];
   const { data } = await supabaseAdmin
@@ -568,11 +625,27 @@ async function buildProfile(phone10) {
   const lookupName = workiz?.customer_name
     || (contact ? `${contact.firstName || ''} ${contact.lastName || ''}`.trim() : '')
     || null;
-  const docket = await withTimeout(
-    fetchDocketEvents({ phone10, name: lookupName, email: lookupEmail }),
-    5000,
-    'docket_events'
-  ).then(r => r?.error ? (errors.push(r.error), { found: false, events: [] }) : (r || { found: false, events: [] }));
+  // Fetch from BOTH systems — dispatch_tasks (new) is primary, docket_webhook_events (legacy) is fallback
+  const [dispatchResult, docketResult] = await Promise.all([
+    withTimeout(fetchDispatchTasks({ phone10, name: lookupName }), 5000, 'dispatch_tasks')
+      .then(r => r?.error ? (errors.push(r.error), { found: false, tasks: [] }) : (r || { found: false, tasks: [] })),
+    withTimeout(fetchDocketEvents({ phone10, name: lookupName, email: lookupEmail }), 5000, 'docket_events')
+      .then(r => r?.error ? (errors.push(r.error), { found: false, events: [] }) : (r || { found: false, events: [] })),
+  ]);
+
+  // Use dispatch_tasks as primary if found, otherwise fall back to docket
+  const docket = dispatchResult.found ? {
+    found: true,
+    total_events: dispatchResult.total_tasks || 0,
+    active_rental: dispatchResult.active_rental ? {
+      docket_id: `TSK-${dispatchResult.active_rental.task_number}`,
+      asset_type: dispatchResult.active_rental.asset_size,
+      job_address: dispatchResult.active_rental.address,
+      job_date: dispatchResult.active_rental.scheduled_date,
+    } : null,
+    last_dropoff: null,
+    last_pickup: null,
+  } : docketResult;
 
   // Build the unified shape
   const profile = {
