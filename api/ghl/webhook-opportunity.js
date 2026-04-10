@@ -154,6 +154,10 @@ async function processWebhook(opportunity) {
     await handleBooked(opportunity, contactName);
     return `${prefix}booked:${stageName}`;
   } else if (LOST_KEYWORDS.some(kw => stageName.includes(kw))) {
+    // Auto-redirect to Non-Qualified unless a legitimate lost reason is given
+    const redirected = await redirectUnqualifiedLost(opportunity, contactId, contactName, stageName, stageMap);
+    if (redirected) return `${prefix}redirected-to-non-qualified`;
+
     await handlePrematureLost(opportunity, contactId, contactName, stageName);
     return `${prefix}lost:${stageName}`;
   }
@@ -247,6 +251,62 @@ async function handleBooked(opportunity, contactName) {
   } catch (err) {
     console.error(`[WEBHOOK] Booked handler error for ${opportunity.id}:`, err);
   }
+}
+
+// Keywords in lost reason that indicate a LEGITIMATE loss (qualified lead that didn't convert)
+const LEGITIMATE_LOST_KEYWORDS = [
+  'too expensive', 'price', 'pricing', 'cost', 'budget', 'afford',
+  'went with', 'competitor', 'another company', 'someone else', 'other company',
+  'timing', 'not ready', 'postpone', 'delay', 'later', 'reschedule',
+  'changed mind', 'cancel', 'no longer need',
+  'diy', 'do it myself', 'doing it themselves',
+  'moving', 'sold house', 'selling',
+  'no show', 'no-show', 'missed appointment',
+];
+
+async function redirectUnqualifiedLost(opportunity, contactId, contactName, stageName, stageMap) {
+  const opportunityId = opportunity.id;
+
+  const lostReason = (getCustomField(opportunity, CF.LOST_REASON) || '').toLowerCase();
+  const lostSubReason = (getCustomField(opportunity, CF.LOST_SUB_REASON) || '').toLowerCase();
+  const combinedReason = `${lostReason} ${lostSubReason}`;
+
+  // If a legitimate lost reason is given, this was a real qualified lead — keep as Lost
+  if (combinedReason.trim()) {
+    const isLegitimate = LEGITIMATE_LOST_KEYWORDS.some(kw => combinedReason.includes(kw));
+    if (isLegitimate) return false;
+  }
+
+  // No reason, or reason indicates non-qualification → redirect to Non-Qualified
+  // This catches AI-moved leads (no reason set) and CSR-moved leads with NQ reasons
+
+  const nonQualifiedStageId = Object.entries(stageMap).find(([, name]) =>
+    name.toLowerCase().includes('non-qualified') || name.toLowerCase().includes('not qualified')
+  )?.[0];
+
+  if (!nonQualifiedStageId) {
+    console.error(`[WEBHOOK] Cannot redirect ${contactName} — Non-Qualified stage not found`);
+    return false;
+  }
+
+  const ok = await updateOpportunity(opportunityId, {
+    pipelineStageId: nonQualifiedStageId,
+  });
+
+  if (!ok) {
+    console.error(`[WEBHOOK] Failed to redirect ${contactName} to Non-Qualified`);
+    return false;
+  }
+
+  const reason = combinedReason.trim() || 'no lost reason provided';
+  const message = `Auto-redirect: "${contactName}" moved from ${stageName} → Non-Qualified (${reason})`;
+  console.log(`[WEBHOOK] ${message}`);
+
+  if (MANAGER_PHONE_NUMBER) {
+    await sendNotification(MANAGER_PHONE_NUMBER, null, message);
+  }
+
+  return true;
 }
 
 async function handlePrematureLost(opportunity, contactId, contactName, stageName) {

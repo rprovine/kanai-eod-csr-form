@@ -123,6 +123,23 @@ export const PIPELINE_CHECKS = [
   { key: 'pipeline_stages_match', label: 'GHL pipeline stages match actual job status in Workiz/Docket' },
 ]
 
+export const COACHING_CATEGORIES = [
+  { key: 'greeting_professionalism', summaryKey: 'avg_greeting', label: 'Greeting & Professionalism', short: 'Greeting' },
+  { key: 'needs_discovery', summaryKey: 'avg_needs_discovery', label: 'Needs Discovery', short: 'Discovery' },
+  { key: 'pricing_confidence', summaryKey: 'avg_pricing_confidence', label: 'Pricing Confidence', short: 'Pricing' },
+  { key: 'objection_handling', summaryKey: 'avg_objection_handling', label: 'Objection Handling', short: 'Objections' },
+  { key: 'close_attempt', summaryKey: 'avg_close_attempt', label: 'Close Attempt', short: 'Closing' },
+]
+
+export const BADGE_CONFIG = {
+  top_scorer: { label: 'Top Scorer', color: 'text-accent-gold', bg: 'bg-accent-gold/10', border: 'border-accent-gold/20' },
+  most_improved: { label: 'Most Improved', color: 'text-accent-green', bg: 'bg-accent-green/10', border: 'border-accent-green/20' },
+  booking_champ: { label: 'Booking Champ', color: 'text-kanai-blue-light', bg: 'bg-kanai-blue/10', border: 'border-kanai-blue/20' },
+  perfect_greeting: { label: 'Perfect Greeting', color: 'text-purple-400', bg: 'bg-purple-400/10', border: 'border-purple-400/20' },
+  streak_3: { label: '3-Week Streak', color: 'text-orange-400', bg: 'bg-orange-400/10', border: 'border-orange-400/20' },
+  streak_5: { label: '5-Week Streak', color: 'text-accent-red', bg: 'bg-accent-red/10', border: 'border-accent-red/20' },
+}
+
 export const FORM_SECTIONS = [
   { id: 1, title: 'Shift Info', shortTitle: 'Shift' },
   { id: 2, title: 'Communications', shortTitle: 'Comms' },

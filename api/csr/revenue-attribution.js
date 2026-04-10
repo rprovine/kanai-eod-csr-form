@@ -158,79 +158,45 @@ export default async function handler(req, res) {
       });
     }
 
-    // Resolve Workiz serial numbers for each opp
-    // GHL search API doesn't return custom fields — need to fetch each opp individually
+    // Resolve Workiz serial numbers via batch UUID lookup
+    // GHL search API DOES return custom fields — no need to fetch each opp individually
     const oppJobMap = [];
+
+    // Collect all Workiz UUIDs from custom fields
+    const uuidToOpps = {};
+    for (const opp of bookedOpps) {
+      const workizJobUUID = getCustomField(opp, CF_WORKIZ_JOB_ID);
+      const workizLeadUUID = getCustomField(opp, CF_WORKIZ_LEAD_ID);
+      const uuid = workizJobUUID || workizLeadUUID;
+      if (uuid) {
+        if (!uuidToOpps[uuid]) uuidToOpps[uuid] = [];
+        uuidToOpps[uuid].push(opp);
+      }
+    }
+
+    // Batch resolve UUIDs to Workiz serial numbers and revenue
+    let workizUUIDMap = {};
+    const uuids = Object.keys(uuidToOpps);
+    if (uuids.length > 0 && workizToken) {
+      try {
+        const { getJobsByUUID } = await import('../_lib/workiz-client.js');
+        workizUUIDMap = await getJobsByUUID(uuids);
+        console.log(`[rev-attr] Workiz batch: ${Object.keys(workizUUIDMap).length} matches for ${uuids.length} UUIDs`);
+      } catch (err) {
+        console.error('[rev-attr] Workiz batch error:', err.message);
+      }
+    }
 
     for (const opp of bookedOpps) {
       const csr = csrByUserId[opp.assignedTo];
       const contactName = opp.contact?.name || opp.name || '';
-
-      // Fetch full opportunity to get custom fields
-      let fullOpp = opp;
-      try {
-        const oppRes = await fetch(`${GHL_API_BASE}/opportunities/${opp.id}`, { headers: ghlHeaders() });
-        if (oppRes.ok) {
-          const oppData = await oppRes.json();
-          fullOpp = oppData.opportunity || oppData || opp;
-        }
-        await delay(200);
-      } catch {}
-
-      const workizJobUUID = getCustomField(fullOpp, CF_WORKIZ_JOB_ID);
-      const workizLeadUUID = getCustomField(fullOpp, CF_WORKIZ_LEAD_ID);
+      const workizJobUUID = getCustomField(opp, CF_WORKIZ_JOB_ID);
+      const workizLeadUUID = getCustomField(opp, CF_WORKIZ_LEAD_ID);
       const uuid = workizJobUUID || workizLeadUUID;
 
       let jobNumber = '';
-
-      if (uuid && workizToken) {
-        try {
-          // Try job endpoint first
-          if (workizJobUUID) {
-            const r = await fetch(`https://api.workiz.com/api/v1/${workizToken}/job/get/${workizJobUUID}/`);
-            if (r.ok) {
-              const text = await r.text();
-              if (text) {
-                const d = JSON.parse(text);
-                const item = Array.isArray(d.data) ? d.data[0] : d.data;
-                if (item?.SerialId) jobNumber = String(item.SerialId);
-              }
-            }
-            await delay(150);
-          }
-
-          // If no job number yet, try lead endpoint — a lead may have a linked job
-          if (!jobNumber && workizLeadUUID) {
-            const r = await fetch(`https://api.workiz.com/api/v1/${workizToken}/lead/get/${workizLeadUUID}/`);
-            if (r.ok) {
-              const text = await r.text();
-              if (text) {
-                const d = JSON.parse(text);
-                const item = Array.isArray(d.data) ? d.data[0] : d.data;
-                // Check if lead has a linked job (converted lead → job)
-                const linkedJobId = item?.JobUUID || item?.JobId || item?.LinkedJobUUID || '';
-                if (linkedJobId) {
-                  // Fetch the linked job to get its serial number
-                  const jr = await fetch(`https://api.workiz.com/api/v1/${workizToken}/job/get/${linkedJobId}/`);
-                  if (jr.ok) {
-                    const jText = await jr.text();
-                    if (jText) {
-                      const jd = JSON.parse(jText);
-                      const jItem = Array.isArray(jd.data) ? jd.data[0] : jd.data;
-                      if (jItem?.SerialId) jobNumber = String(jItem.SerialId);
-                    }
-                  }
-                  await delay(150);
-                }
-                // Fall back to lead serial if no linked job
-                if (!jobNumber && item?.SerialId) {
-                  jobNumber = String(item.SerialId);
-                }
-              }
-            }
-            await delay(150);
-          }
-        } catch {}
+      if (uuid && workizUUIDMap[uuid]) {
+        jobNumber = workizUUIDMap[uuid].jobNumber || '';
       }
 
       if (jobNumber || contactName) {
