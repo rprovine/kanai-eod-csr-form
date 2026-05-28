@@ -477,9 +477,24 @@ async function fetchDispatchTasks({ phone10, name }) {
 
   if (!data || data.length === 0) return { found: false, tasks: [] };
 
-  // Derive active rental: most recent drop_off that's not completed/cancelled and no later pickup completed
+  // Derive active rental: a drop_off where the bin has ACTUALLY been
+  // delivered to the customer (status='completed' OR mid-delivery
+  // states en_route/on_site). Pending_payment / pending_agreement /
+  // scheduled drop-offs are FUTURE work — the bin isn't on site, the
+  // customer doesn't have anything, and treating them as an "active
+  // rental" makes Kai/SMS-AI hallucinate "your bin was delivered" for
+  // a date that's still in the future. Kuupua Mossman 2026-05-28:
+  // T#481 sat in pending_payment, scheduled for 6/3, and Kai texted
+  // her "Your 15yd was delivered to ... on 2026-06-03" — using the
+  // scheduled date in past tense. Same fix prevents the equivalent
+  // hallucination on agreement-pending and freshly-scheduled drops.
+  const DELIVERED_STATUSES = new Set(['completed', 'en_route', 'on_site', 'at_dump', 'returning']);
   const activeDropOff = data.find(t =>
+    t.task_type === 'drop_off' && DELIVERED_STATUSES.has(t.status)
+  );
+  const scheduledDropOff = data.find(t =>
     t.task_type === 'drop_off' &&
+    !DELIVERED_STATUSES.has(t.status) &&
     t.status !== 'completed' &&
     t.status !== 'cancelled'
   );
@@ -494,8 +509,19 @@ async function fetchDispatchTasks({ phone10, name }) {
       address: activeDropOff.job_address,
       scheduled_date: activeDropOff.scheduled_date,
       rental_end_date: activeDropOff.rental_end_date,
+      delivered_on: activeDropOff.completed_at || null,
     } : null,
     has_active_rental: !!activeDropOff,
+    // A FUTURE drop-off that hasn't shipped yet — surfaced separately
+    // so the AI context can say "scheduled for delivery on X" instead
+    // of conflating it with "active rental, NOT yet picked up."
+    upcoming_drop_off: scheduledDropOff ? {
+      task_number: scheduledDropOff.task_number,
+      asset_size: scheduledDropOff.asset_size,
+      address: scheduledDropOff.job_address,
+      scheduled_date: scheduledDropOff.scheduled_date,
+      status: scheduledDropOff.status,
+    } : null,
   };
 }
 
@@ -537,6 +563,11 @@ function buildSignals({ ghlContact, workiz, opportunities, voiceHistory, smsConv
   return {
     is_existing_workiz_customer: workiz.found,
     has_active_dumpster_rental: !!(docket && docket.active_rental),
+    // Separate flag for "drop-off scheduled but bin not yet delivered."
+    // Lets the AI context block say "scheduled for delivery on X"
+    // instead of conflating it with "active rental." Kuupua Mossman
+    // 2026-05-28 hallucination prevention.
+    has_upcoming_dumpster_drop: !!(docket && docket.upcoming_drop_off),
     is_docket_customer: !!(docket && docket.found),
     has_active_ai_conversation: hasActiveAiConversation,
     has_recent_voice_call: !!lastVoiceCall && (Date.now() - new Date(lastVoiceCall.created_at).getTime()) < 30 * 24 * 60 * 60 * 1000,
@@ -640,9 +671,16 @@ async function buildProfile(phone10) {
     active_rental: dispatchResult.active_rental ? {
       docket_id: `TSK-${dispatchResult.active_rental.task_number}`,
       asset_type: dispatchResult.active_rental.asset_size,
-      job_address: dispatchResult.active_rental.address,
-      job_date: dispatchResult.active_rental.scheduled_date,
+      address: dispatchResult.active_rental.address,
+      // Pass delivered_on (the completed_at of the drop) so the AI
+      // context builder uses the ACTUAL delivery date, not the
+      // scheduled date. Falls back to scheduled_date only when the
+      // drop is mid-delivery (en_route/on_site) and completed_at
+      // isn't stamped yet.
+      delivered_on: dispatchResult.active_rental.delivered_on || dispatchResult.active_rental.scheduled_date,
+      rental_end_date: dispatchResult.active_rental.rental_end_date,
     } : null,
+    upcoming_drop_off: dispatchResult.upcoming_drop_off || null,
     last_dropoff: null,
     last_pickup: null,
   } : docketResult;
